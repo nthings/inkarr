@@ -54,15 +54,16 @@ FROM node:24-alpine AS runner
 WORKDIR /app
 
 # Install runtime dependencies and build tools for native modules
-RUN apk add --no-cache libc6-compat python3 make g++
+RUN apk add --no-cache libc6-compat python3 make g++ su-exec
 
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Create non-root user for security (will be recreated at runtime to match mounted volume)
+RUN addgroup --system -g 1001 nextjs
+RUN adduser --system -u 1001 nextjs
 
 # Set production environment
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL=file:/app/config/app.db
 
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
@@ -70,25 +71,22 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 
 # Copy the standalone build
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=1001:1001 /app/.next/standalone ./
+COPY --from=builder --chown=1001:1001 /app/.next/static ./.next/static
 
 # Copy node_modules from deps (where native modules were compiled)
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=deps --chown=1001:1001 /app/node_modules ./node_modules
 
 # Rebuild native modules for this environment
 RUN npm rebuild better-sqlite3
 
 # Copy entrypoint script
-COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
+COPY --chown=0:0 docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
-# Create data directories
-RUN mkdir -p /app/data/downloads /app/data/manga /app/data/comics
-RUN chown -R nextjs:nodejs /app/data
-
-# Switch to non-root user
-USER nextjs
+# Create data and config directories
+RUN mkdir -p /app/data/downloads /app/data/manga /app/data/comics /app/config
+RUN chmod 755 /app/data /app/config
 
 # Expose port
 EXPOSE 3000
