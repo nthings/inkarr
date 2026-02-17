@@ -11,8 +11,10 @@ echo "Detected /app/config ownership: UID=$CONFIG_UID, GID=$CONFIG_GID"
 if [ "$(id -u)" = "0" ]; then
   if [ "$CONFIG_UID" != "0" ] && [ "$CONFIG_UID" != "1001" ]; then
     echo "Creating app user with UID=$CONFIG_UID, GID=$CONFIG_GID to match mounted volume"
-    delgroup nextjs 2>/dev/null || true
+    # Remove any existing groups/users with these IDs
+    delgroup $(getent group $CONFIG_GID | cut -d: -f1) 2>/dev/null || true
     deluser nextjs 2>/dev/null || true
+    
     addgroup -g $CONFIG_GID nextjs
     adduser -D -u $CONFIG_UID -G nextjs nextjs
   else
