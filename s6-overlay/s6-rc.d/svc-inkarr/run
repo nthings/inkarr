@@ -1,0 +1,13 @@
+#!/command/with-contenv sh
+# s6-overlay service script for inkarr
+
+cd /app
+
+# Export DATABASE_URL for the abc user
+export DATABASE_URL
+
+echo "[services] Running Prisma migrations..."
+su-exec abc npx prisma db push
+
+echo "[services] Starting Inkarr..."
+exec su-exec abc node server.js

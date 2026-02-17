@@ -47,23 +47,27 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
 # ============================================
-# Stage 4: Production runner
+# Stage 4: Production runner with s6-overlay
 # ============================================
 FROM node:24-alpine AS runner
 
+# Install s6-overlay
+RUN apk add --no-cache curl xz
+ARG S6_OVERLAY_VERSION=3.1.5.0
+RUN curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxp -C /
+RUN curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz | tar -Jxp -C /
+
+# Install runtime dependencies
+RUN apk add --no-cache libc6-compat python3 make g++ procps su-exec
+
 WORKDIR /app
 
-# Install runtime dependencies and build tools for native modules
-RUN apk add --no-cache libc6-compat python3 make g++ su-exec
-
-# Create non-root user for security (will be recreated at runtime to match mounted volume)
-RUN addgroup --system -g 1001 nextjs
-RUN adduser --system -u 1001 nextjs
 
 # Set production environment
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV DATABASE_URL=file:/app/config/app.db
+ENV DATABASE_URL=file:/config/app.db
+ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
@@ -71,33 +75,28 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 
 # Copy the standalone build
-COPY --from=builder --chown=1001:1001 /app/.next/standalone ./
-COPY --from=builder --chown=1001:1001 /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 # Copy node_modules from deps (where native modules were compiled)
-COPY --from=deps --chown=1001:1001 /app/node_modules ./node_modules
+COPY --from=deps /app/node_modules ./node_modules
 
 # Rebuild native modules for this environment
 RUN npm rebuild better-sqlite3
 
-# Copy entrypoint script
-COPY --chown=0:0 docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
+# Create config directory (ownership will be set by init script at runtime)
+RUN mkdir -p /config && chmod 755 /config
 
-# Create data and config directories
-RUN mkdir -p /app/data/downloads /app/data/manga /app/data/comics /app/config
-RUN chmod 755 /app/data /app/config
+# Copy s6-overlay init and service scripts
+COPY s6-overlay/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
+COPY s6-overlay/scripts/ /etc/s6-overlay/scripts/
+
+# Make scripts executable
+RUN chmod +x /etc/s6-overlay/scripts/*.sh \
+    && chmod +x /etc/s6-overlay/s6-rc.d/svc-inkarr/run
 
 # Expose port
 EXPOSE 3000
 
-# Set hostname
-ENV HOSTNAME="0.0.0.0"
-ENV PORT=3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/system/status || exit 1
-
-# Start the application with migrations
-ENTRYPOINT ["./docker-entrypoint.sh"]
+# S6 entrypoint
+ENTRYPOINT ["/init"]

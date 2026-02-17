@@ -10,14 +10,14 @@ services:
       - "3000:3000"
     volumes:
       # Persistent data storage
-      - inkarr-data:/app/data
+      - inkarr-data:/data
       # Mount your media library (adjust paths as needed)
-      - ./data/manga:/app/data/manga
-      - ./data/comics:/app/data/comics
-      - ./data/downloads:/app/data/downloads
+      - ./data/manga:/data/manga
+      - ./data/comics:/data/comics
+      - ./data/downloads:/data/downloads
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:/app/data/inkarr.db
+      - DATABASE_URL=file:/data/dev.db
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/system/status"]
       interval: 30s
