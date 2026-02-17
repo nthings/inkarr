@@ -1,0 +1,36 @@
+services:
+  inkarr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: inkarr:latest
+    container_name: inkarr
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persistent data storage
+      - inkarr-data:/app/data
+      # Mount your media library (adjust paths as needed)
+      - ./data/manga:/app/data/manga
+      - ./data/comics:/app/data/comics
+      - ./data/downloads:/app/data/downloads
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/inkarr.db
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - inkarr-network
+
+volumes:
+  inkarr-data:
+    driver: local
+
+networks:
+  inkarr-network:
+    driver: bridge

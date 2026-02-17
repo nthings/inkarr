@@ -1,0 +1,740 @@
+// Inkarr - Comic & Manga Manager
+// Prisma Schema inspired by Radarr/Sonarr/Readarr architecture
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// =============================================================================
+// MEDIA TRACKING MODELS
+// =============================================================================
+
+/// Media type enumeration for comics vs manga
+enum MediaType {
+  COMIC
+  MANGA
+  MANHWA
+  MANHUA
+  WEBTOON
+}
+
+/// Publication status
+enum PublicationStatus {
+  CONTINUING
+  ENDED
+  HIATUS
+  CANCELLED
+  UPCOMING
+}
+
+/// Monitoring status for library items
+enum MonitorStatus {
+  ALL
+  FUTURE
+  MISSING
+  EXISTING
+  FIRST_VOLUME
+  LATEST_VOLUME
+  NONE
+}
+
+/// Creator metadata (authors, artists, writers)
+model CreatorMetadata {
+  id              Int      @id @default(autoincrement())
+  foreignId       String?  @unique // External ID (ComicVine, MAL, etc.)
+  name            String
+  sortName        String?
+  aliases         String?  // JSON array of alternative names
+  overview        String?
+  birthDate       DateTime?
+  deathDate       DateTime?
+  hometown        String?
+  gender          String?
+  imageUrl        String?
+  links           String?  // JSON array of external links
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  creators        Creator[]
+  
+  @@index([name])
+  @@index([foreignId])
+}
+
+/// Creator instance linked to library
+model Creator {
+  id                Int             @id @default(autoincrement())
+  creatorMetadataId Int
+  cleanName         String
+  monitored         Boolean         @default(true)
+  monitorNewItems   MonitorStatus   @default(ALL)
+  path              String?
+  rootFolderPath    String?
+  qualityProfileId  Int?
+  metadataProfileId Int?
+  tags              String?         // JSON array of tag IDs
+  added             DateTime        @default(now())
+  lastInfoSync      DateTime?
+  
+  metadata          CreatorMetadata @relation(fields: [creatorMetadataId], references: [id])
+  qualityProfile    QualityProfile? @relation(fields: [qualityProfileId], references: [id])
+  metadataProfile   MetadataProfile? @relation(fields: [metadataProfileId], references: [id])
+  series            SeriesCreator[]
+  
+  @@index([creatorMetadataId])
+  @@index([cleanName])
+}
+
+/// Series represents a comic series or manga title
+model Series {
+  id                Int               @id @default(autoincrement())
+  foreignId         String?           @unique // ComicVine volume ID or MAL manga ID
+  title             String
+  sortTitle         String
+  cleanTitle        String
+  alternateTitles   String?           // JSON array
+  overview          String?
+  mediaType         MediaType         @default(MANGA)
+  status            PublicationStatus @default(CONTINUING)
+  year              Int?
+  publisher         String?
+  imprint           String?
+  genres            String?           // JSON array
+  tags              String?           // JSON array
+  ratings           String?           // JSON object with different sources
+  imageUrl          String?
+  bannerUrl         String?
+  
+  // Monitoring & Library
+  monitored         Boolean           @default(true)
+  monitorStatus     MonitorStatus     @default(ALL)
+  path              String?
+  rootFolderPath    String?
+  qualityProfileId  Int?
+  metadataProfileId Int?
+  
+  // Metadata
+  volumeCount       Int?
+  chapterCount      Int?
+  lastInfoSync      DateTime?
+  added             DateTime          @default(now())
+  
+  // External IDs for different sources
+  comicVineId       String?
+  malId             String?
+  anilistId         String?
+  mangadexId        String?
+  
+  qualityProfile    QualityProfile?   @relation(fields: [qualityProfileId], references: [id])
+  metadataProfile   MetadataProfile?  @relation(fields: [metadataProfileId], references: [id])
+  volumes           Volume[]
+  chapters          Chapter[]
+  creators          SeriesCreator[]
+  mediaFiles        MediaFile[]
+  storyArcs         SeriesStoryArc[]
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  @@index([title])
+  @@index([cleanTitle])
+  @@index([foreignId])
+  @@index([comicVineId])
+  @@index([malId])
+}
+
+/// Junction table for Series and Creators with role
+model SeriesCreator {
+  id        Int     @id @default(autoincrement())
+  seriesId  Int
+  creatorId Int
+  role      String  // writer, artist, penciler, inker, colorist, etc.
+  
+  series    Series  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  @@unique([seriesId, creatorId, role])
+}
+
+/// Volume (tankōbon for manga, trade paperback/collected edition for comics)
+model Volume {
+  id              Int       @id @default(autoincrement())
+  seriesId        Int
+  foreignId       String?   // External volume ID
+  title           String?
+  volumeNumber    Int?
+  overview        String?
+  releaseDate     DateTime?
+  pageCount       Int?
+  isbn            String?
+  isbn13          String?
+  asin            String?
+  imageUrl        String?
+  
+  // Monitoring
+  monitored       Boolean   @default(true)
+  
+  series          Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  chapters        Chapter[]
+  mediaFiles      MediaFile[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([seriesId, volumeNumber])
+  @@index([seriesId])
+  @@index([foreignId])
+}
+
+/// Chapter/Issue - individual chapters or comic issues
+model Chapter {
+  id              Int       @id @default(autoincrement())
+  seriesId        Int
+  volumeId        Int?
+  foreignId       String?   // ComicVine issue ID or chapter ID
+  title           String?
+  chapterNumber   Float?    // Float to support 10.5, etc.
+  issueNumber     String?   // For comics with special numbering
+  overview        String?
+  releaseDate     DateTime?
+  pageCount       Int?
+  imageUrl        String?
+  
+  // Monitoring
+  monitored       Boolean   @default(true)
+  
+  series          Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  volume          Volume?   @relation(fields: [volumeId], references: [id], onDelete: SetNull)
+  mediaFiles      MediaFile[]
+  storyArcs       ChapterStoryArc[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([seriesId])
+  @@index([volumeId])
+  @@index([foreignId])
+}
+
+/// Story Arc - crossover events or named story arcs
+model StoryArc {
+  id          Int       @id @default(autoincrement())
+  foreignId   String?   @unique
+  name        String
+  overview    String?
+  publisher   String?
+  imageUrl    String?
+  
+  series      SeriesStoryArc[]
+  chapters    ChapterStoryArc[]
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([name])
+}
+
+model SeriesStoryArc {
+  id         Int      @id @default(autoincrement())
+  seriesId   Int
+  storyArcId Int
+  position   Int?     // Order within the story arc
+  
+  series     Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  storyArc   StoryArc @relation(fields: [storyArcId], references: [id], onDelete: Cascade)
+  
+  @@unique([seriesId, storyArcId])
+}
+
+model ChapterStoryArc {
+  id         Int      @id @default(autoincrement())
+  chapterId  Int
+  storyArcId Int
+  position   Int?     // Reading order within the arc
+  
+  chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  storyArc   StoryArc @relation(fields: [storyArcId], references: [id], onDelete: Cascade)
+  
+  @@unique([chapterId, storyArcId])
+}
+
+// =============================================================================
+// MEDIA FILE MANAGEMENT
+// =============================================================================
+
+/// Supported media file formats
+enum FileFormat {
+  CBZ   // Comic Book Zip
+  CBR   // Comic Book RAR
+  CB7   // Comic Book 7z
+  PDF
+  EPUB
+  MOBI
+}
+
+/// Media file representing downloaded content
+model MediaFile {
+  id              Int         @id @default(autoincrement())
+  seriesId        Int
+  volumeId        Int?
+  chapterId       Int?
+  path            String      @unique
+  relativePath    String
+  size            BigInt
+  dateAdded       DateTime    @default(now())
+  
+  // File info
+  format          FileFormat
+  quality         String?     // JSON object
+  releaseGroup    String?
+  sceneName       String?
+  
+  // Media info
+  pageCount       Int?
+  
+  // Calibre integration
+  calibreId       Int?        // ID in Calibre library if synced
+  calibreSyncedAt DateTime?   // Last sync timestamp
+  
+  series          Series      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  volume          Volume?     @relation(fields: [volumeId], references: [id], onDelete: SetNull)
+  chapter         Chapter?    @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  history         History[]
+  
+  @@index([seriesId])
+  @@index([volumeId])
+  @@index([chapterId])
+  @@index([calibreId])
+}
+
+// =============================================================================
+// PROFILES & CONFIGURATION
+// =============================================================================
+
+/// Quality definition for ranking releases
+model QualityDefinition {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  title       String
+  weight      Int     @default(0)
+  minSize     Float?  // MB
+  maxSize     Float?  // MB
+  
+  items       QualityProfileItem[]
+}
+
+/// Quality profile for series
+model QualityProfile {
+  id              Int       @id @default(autoincrement())
+  name            String    @unique
+  upgradeAllowed  Boolean   @default(true)
+  cutoff          Int       // Quality definition ID
+  items           String    // JSON array of quality items with allowed/preferred
+  
+  creators        Creator[]
+  series          Series[]
+}
+
+model QualityProfileItem {
+  id                  Int               @id @default(autoincrement())
+  qualityDefinitionId Int
+  qualityProfileId    Int?
+  allowed             Boolean           @default(true)
+  
+  qualityDefinition   QualityDefinition @relation(fields: [qualityDefinitionId], references: [id])
+}
+
+/// Metadata profile for filtering content
+model MetadataProfile {
+  id                    Int       @id @default(autoincrement())
+  name                  String    @unique
+  minPopularity         Float?
+  skipMissingDate       Boolean   @default(false)
+  skipMissingIsbn       Boolean   @default(false)
+  skipPartsAndSets      Boolean   @default(true)
+  skipSeriesWithNoTitle Boolean   @default(true)
+  allowedLanguages      String?   // JSON array
+  
+  creators              Creator[]
+  series                Series[]
+}
+
+/// Root folder configuration
+model RootFolder {
+  id                  Int       @id @default(autoincrement())
+  path                String    @unique
+  name                String?
+  defaultMonitorOption MonitorStatus @default(ALL)
+  defaultQualityProfileId Int?
+  defaultMetadataProfileId Int?
+  
+  createdAt           DateTime  @default(now())
+}
+
+/// Naming configuration for file organization
+model NamingConfig {
+  id                      Int     @id @default(autoincrement())
+  renameFiles             Boolean @default(true)
+  replaceIllegalChars     Boolean @default(true)
+  colonReplacementFormat  String  @default("smart")
+  standardFileFormat      String  @default("{Series Title} - {Volume Number} - {Chapter Number}")
+  seriesFolderFormat      String  @default("{Series Title}")
+  volumeFolderFormat      String  @default("Volume {Volume Number}")
+  creatorFolderFormat     String  @default("{Creator Name}")
+}
+
+// =============================================================================
+// CALIBRE INTEGRATION
+// =============================================================================
+
+/// Calibre output profiles for ebook conversion
+enum CalibreProfile {
+  DEFAULT
+  KINDLE
+  KINDLE_DX
+  KINDLE_FIRE
+  KINDLE_OASIS
+  KINDLE_PW
+  KINDLE_PW3
+  KINDLE_VOYAGE
+  KOBO
+  NOOK
+  NOOK_COLOR
+  NOOK_HD_PLUS
+  SONY
+  IPAD
+  IPAD3
+  GENERIC_EINK
+  GENERIC_EINK_HD
+  GENERIC_EINK_LARGE
+  TABLET
+}
+
+/// Calibre Content Server settings
+model CalibreSettings {
+  id              Int            @id @default(autoincrement())
+  name            String         @default("Default")
+  host            String
+  port            Int            @default(8080)
+  urlBase         String?
+  username        String?
+  password        String?
+  library         String?
+  outputFormat    String?        // Comma-separated: EPUB,AZW3,PDF
+  outputProfile   CalibreProfile @default(DEFAULT)
+  useSsl          Boolean        @default(false)
+  enable          Boolean        @default(true)
+  
+  // Link to root folders for automatic syncing
+  syncRootFolders String?        // JSON array of root folder IDs
+  
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  @@index([host, port])
+}
+
+// =============================================================================
+// DOWNLOAD CLIENTS
+// =============================================================================
+
+/// Download protocol type
+enum DownloadProtocol {
+  USENET
+  TORRENT
+}
+
+/// Download client configuration
+model DownloadClient {
+  id                  Int              @id @default(autoincrement())
+  name                String
+  implementation      String           // qBittorrent, SABnzbd, Transmission, etc.
+  protocol            DownloadProtocol
+  settings            String           // JSON settings
+  enable              Boolean          @default(true)
+  priority            Int              @default(1)
+  removeCompletedDownloads Boolean     @default(true)
+  removeFailedDownloads Boolean        @default(true)
+  
+  tags                String?          // JSON array of tag IDs
+  
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  
+  status              DownloadClientStatus?
+}
+
+/// Download client status tracking
+model DownloadClientStatus {
+  id                Int            @id @default(autoincrement())
+  downloadClientId  Int            @unique
+  initialFailure    DateTime?
+  mostRecentFailure DateTime?
+  escalationLevel   Int            @default(0)
+  disabledTill      DateTime?
+  
+  downloadClient    DownloadClient @relation(fields: [downloadClientId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// INDEXERS
+// =============================================================================
+
+/// Indexer configuration (Newznab/Torznab)
+model Indexer {
+  id                      Int              @id @default(autoincrement())
+  name                    String
+  implementation          String           // Newznab, Torznab, etc.
+  protocol                DownloadProtocol
+  settings                String           // JSON settings (URL, API key, categories)
+  enableRss               Boolean          @default(true)
+  enableAutomaticSearch   Boolean          @default(true)
+  enableInteractiveSearch Boolean          @default(true)
+  priority                Int              @default(25)
+  downloadClientId        Int?
+  
+  tags                    String?          // JSON array of tag IDs
+  
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  
+  status                  IndexerStatus?
+}
+
+/// Indexer status tracking
+model IndexerStatus {
+  id                      Int       @id @default(autoincrement())
+  indexerId               Int       @unique
+  initialFailure          DateTime?
+  mostRecentFailure       DateTime?
+  escalationLevel         Int       @default(0)
+  disabledTill            DateTime?
+  lastRssSyncReleaseInfo  String?   // JSON of last release seen
+  
+  indexer                 Indexer   @relation(fields: [indexerId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// DOWNLOAD QUEUE & HISTORY
+// =============================================================================
+
+/// Download queue item status
+enum QueueItemStatus {
+  QUEUED
+  PAUSED
+  DOWNLOADING
+  COMPLETED
+  FAILED
+  WARNING
+  IMPORTING
+}
+
+/// Active download queue
+model QueueItem {
+  id                Int             @id @default(autoincrement())
+  seriesId          Int?
+  volumeId          Int?
+  chapterId         Int?
+  downloadClientId  Int?
+  downloadId        String?         // ID from download client
+  title             String
+  size              BigInt?
+  sizeleft          BigInt?
+  status            QueueItemStatus @default(QUEUED)
+  protocol          DownloadProtocol
+  indexer           String?
+  outputPath        String?
+  errorMessage      String?
+  
+  added             DateTime        @default(now())
+  estimatedCompletionTime DateTime?
+  
+  @@index([downloadId])
+  @@index([seriesId])
+}
+
+/// Download/import history tracking
+enum HistoryEventType {
+  GRABBED
+  DOWNLOAD_FOLDER_IMPORTED
+  DOWNLOAD_FAILED
+  DELETED
+  FILE_DELETED
+  FILE_RENAMED
+  IGNORED
+}
+
+model History {
+  id              Int              @id @default(autoincrement())
+  seriesId        Int?
+  volumeId        Int?
+  chapterId       Int?
+  mediaFileId     Int?
+  sourceTitle     String
+  eventType       HistoryEventType
+  quality         String?          // JSON object
+  data            String?          // JSON object with additional details
+  downloadId      String?
+  date            DateTime         @default(now())
+  
+  mediaFile       MediaFile?       @relation(fields: [mediaFileId], references: [id], onDelete: SetNull)
+  
+  @@index([seriesId])
+  @@index([date])
+  @@index([eventType])
+}
+
+/// Blocklist for releases to avoid
+model Blocklist {
+  id              Int       @id @default(autoincrement())
+  seriesId        Int?
+  sourceTitle     String
+  protocol        DownloadProtocol
+  indexer         String?
+  message         String?
+  date            DateTime  @default(now())
+  
+  @@index([seriesId])
+}
+
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+/// Notification provider configuration
+model Notification {
+  id                Int      @id @default(autoincrement())
+  name              String
+  implementation    String   // Discord, Email, Pushover, Webhook, etc.
+  settings          String   // JSON settings
+  onGrab            Boolean  @default(false)
+  onDownload        Boolean  @default(false)
+  onUpgrade         Boolean  @default(false)
+  onRename          Boolean  @default(false)
+  onDelete          Boolean  @default(false)
+  onHealthIssue     Boolean  @default(false)
+  
+  tags              String?  // JSON array of tag IDs
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// =============================================================================
+// TAGS & CUSTOM FILTERS
+// =============================================================================
+
+/// Tags for organizing and filtering
+model Tag {
+  id    Int     @id @default(autoincrement())
+  label String  @unique
+}
+
+/// Custom filters for UI
+model CustomFilter {
+  id      Int     @id @default(autoincrement())
+  type    String  // series, queue, history, etc.
+  label   String
+  filters String  // JSON array of filter conditions
+}
+
+// =============================================================================
+// METADATA PROVIDERS
+// =============================================================================
+
+/// External metadata provider configuration
+model MetadataProvider {
+  id              Int      @id @default(autoincrement())
+  name            String
+  implementation  String   // ComicVine, MyAnimeList, AniList, MangaDex, etc.
+  settings        String   // JSON settings (API keys, preferences)
+  enable          Boolean  @default(true)
+  priority        Int      @default(1)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// =============================================================================
+// SYSTEM & COMMANDS
+// =============================================================================
+
+/// Scheduled tasks
+model ScheduledTask {
+  id           Int       @id @default(autoincrement())
+  name         String    @unique
+  interval     Int       // Minutes
+  lastExecution DateTime?
+  lastStartTime DateTime?
+  
+  @@index([name])
+}
+
+/// Command queue for async operations
+model Command {
+  id           Int       @id @default(autoincrement())
+  name         String
+  body         String?   // JSON command parameters
+  priority     Int       @default(0)
+  status       String    @default("queued") // queued, started, completed, failed
+  queued       DateTime  @default(now())
+  started      DateTime?
+  ended        DateTime?
+  result       String?   // JSON result
+  
+  @@index([status])
+  @@index([queued])
+}
+
+/// System configuration key-value store
+model Config {
+  id    Int     @id @default(autoincrement())
+  key   String  @unique
+  value String
+}
+
+/// User accounts for authentication
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  isAdmin      Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+/// User sessions for authentication
+model Session {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+  
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Application logs
+model Log {
+  id        Int      @id @default(autoincrement())
+  time      DateTime @default(now())
+  level     String   // Debug, Info, Warn, Error, Fatal
+  logger    String
+  message   String
+  exception String?
+  
+  @@index([time])
+  @@index([level])
+}

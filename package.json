@@ -6,20 +6,33 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.4.0",
+    "better-sqlite3": "^12.6.2",
     "next": "16.1.6",
+    "next-swagger-doc": "^0.4.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "swagger-ui-react": "^5.31.1",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
+    "@prisma/client": "^7.4.0",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.19.33",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/xml2js": "^0.4.14",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "prisma": "^7.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
