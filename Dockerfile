@@ -35,6 +35,8 @@ WORKDIR /app
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+# Copy generated Prisma client from deps stage
+COPY --from=deps /app/app/generated ./app/generated
 COPY . .
 
 # Set production environment for build
