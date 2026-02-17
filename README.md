@@ -52,13 +52,12 @@ The app will be available at http://localhost:3000
 
 ### Docker Compose Configuration
 
+> Pre-built Docker images are published to [GitHub Container Registry](https://github.com/nthings/inkarr/pkgs/container/inkarr) for easy deployment without building locally.
+
 ```yaml
 services:
   inkarr:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: inkarr:latest
+    image: ghcr.io/nthings/inkarr:latest  # Published image on GitHub Container Registry
     container_name: inkarr
     restart: unless-stopped
     ports:
