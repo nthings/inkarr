@@ -65,14 +65,10 @@ RUN apk add --no-cache --virtual .s6-deps curl xz && \
     curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz | tar -Jxp -C / && \
     apk del .s6-deps
 
-# Install only runtime dependencies (no build tools)
-RUN apk add --no-cache libc6-compat procps su-exec
-
-# Install build tools, rebuild native modules, then remove build tools in one layer
-RUN apk add --no-cache --virtual .build-deps python3 make g++
+# Runtime dependencies only
+RUN apk add --no-cache libc6-compat su-exec
 
 WORKDIR /app
-
 
 # Set production environment
 ENV NODE_ENV=production
@@ -82,20 +78,23 @@ ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 # Allow cookies over HTTP for local network deployments (set to 'true' if using HTTPS)
 ENV SECURE_COOKIES=false
 
-# Copy necessary files from builder
+# Copy the standalone build (includes minimal node_modules for Next.js)
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 
-# Copy the standalone build
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Copy better-sqlite3 native module (needed for Prisma SQLite adapter)
+# The standalone doesn't include native modules, so we copy from builder
+COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
+COPY --from=builder /app/node_modules/bindings ./node_modules/bindings
+COPY --from=builder /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
-# Copy node_modules from deps (where native modules were compiled)
-COPY --from=deps /app/node_modules ./node_modules
-
-# Rebuild native modules for this environment and remove build tools
-RUN npm rebuild better-sqlite3 && apk del .build-deps
+# Rebuild better-sqlite3 for target architecture (needed for cross-platform builds)
+RUN apk add --no-cache --virtual .build-deps python3 make g++ && \
+    npm rebuild better-sqlite3 && \
+    apk del .build-deps
 
 # Create config directory (ownership will be set by init script at runtime)
 RUN mkdir -p /config && chmod 755 /config
