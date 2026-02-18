@@ -52,20 +52,24 @@ RUN pnpm build
 FROM node:24-alpine AS runner
 
 # Install s6-overlay (architecture-aware)
-RUN apk add --no-cache curl xz
 ARG S6_OVERLAY_VERSION=3.1.5.0
 ARG TARGETARCH
-RUN curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxp -C /
-RUN case "${TARGETARCH}" in \
+RUN apk add --no-cache --virtual .s6-deps curl xz && \
+    curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxp -C / && \
+    case "${TARGETARCH}" in \
       amd64) S6_ARCH="x86_64" ;; \
       arm64) S6_ARCH="aarch64" ;; \
       arm) S6_ARCH="arm" ;; \
       *) S6_ARCH="x86_64" ;; \
     esac && \
-    curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz | tar -Jxp -C /
+    curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz | tar -Jxp -C / && \
+    apk del .s6-deps
 
-# Install runtime dependencies
-RUN apk add --no-cache libc6-compat python3 make g++ procps su-exec
+# Install only runtime dependencies (no build tools)
+RUN apk add --no-cache libc6-compat procps su-exec
+
+# Install build tools, rebuild native modules, then remove build tools in one layer
+RUN apk add --no-cache --virtual .build-deps python3 make g++
 
 WORKDIR /app
 
@@ -88,8 +92,8 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy node_modules from deps (where native modules were compiled)
 COPY --from=deps /app/node_modules ./node_modules
 
-# Rebuild native modules for this environment
-RUN npm rebuild better-sqlite3
+# Rebuild native modules for this environment and remove build tools
+RUN npm rebuild better-sqlite3 && apk del .build-deps
 
 # Create config directory (ownership will be set by init script at runtime)
 RUN mkdir -p /config && chmod 755 /config

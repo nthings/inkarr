@@ -61,8 +61,10 @@ if [ -d /config ]; then
   chmod 755 /config
 fi
 
-# Ensure /app directory is owned by abc for Next.js
-echo "[init] Setting ownership of /app to abc:abc"
-chown -R abc:abc /app
+# Only set ownership on writable directories, not the entire /app
+# The app files don't need to be owned by abc, just readable
+echo "[init] Setting ownership of /app/.next/cache to abc:abc (if exists)"
+mkdir -p /app/.next/cache 2>/dev/null || true
+chown -R abc:abc /app/.next/cache 2>/dev/null || true
 
 echo "[init] User/group setup complete"
