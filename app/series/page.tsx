@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Header } from "@/app/components/Header";
 
+// Proxy external images through our backend to avoid rate limiting
+function proxyImageUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  // Only proxy external URLs
+  if (url.startsWith('/') || url.startsWith('data:')) return url;
+  return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 interface Series {
   id: number;
   title: string;
@@ -140,7 +148,7 @@ export default function LibraryPage() {
                 <div className="aspect-[2/3] bg-zinc-800 relative">
                   {s.coverImage ? (
                     <img
-                      src={s.coverImage}
+                      src={proxyImageUrl(s.coverImage)}
                       alt={s.title}
                       className="w-full h-full object-cover"
                     />
@@ -186,7 +194,7 @@ export default function LibraryPage() {
                 <div className="w-12 h-18 bg-zinc-800 rounded overflow-hidden flex-shrink-0">
                   {s.coverImage ? (
                     <img
-                      src={s.coverImage}
+                      src={proxyImageUrl(s.coverImage)}
                       alt={s.title}
                       className="w-full h-full object-cover"
                     />

@@ -145,29 +145,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const id = searchParams.get('id');
-
-    if (!id) {
-      return NextResponse.json(
-        { error: 'ID is required' },
-        { status: 400 }
-      );
-    }
-
-    await prisma.rootFolder.delete({
-      where: { id: parseInt(id, 10) },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting root folder:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete root folder' },
-      { status: 500 }
-    );
-  }
-}

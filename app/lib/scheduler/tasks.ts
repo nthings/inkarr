@@ -313,17 +313,27 @@ export async function executeSearchMonitored(context: TaskContext): Promise<Task
 
 /**
  * Task: Refresh Series
- * Refreshes metadata for all series from external sources
+ * Refreshes metadata for all series from external sources and pre-fetches cover images
  */
 export async function executeRefreshSeries(context: TaskContext): Promise<TaskResult> {
   try {
+    const { prefetchSeriesCovers } = await import('@/app/lib/image-cache');
+    
     const series = await prisma.series.findMany({
       where: {
         monitored: true,
       },
+      include: {
+        volumes: {
+          select: { imageUrl: true },
+        },
+      },
     });
     
     let refreshedCount = 0;
+    let imagesCached = 0;
+    let imagesSkipped = 0;
+    let imagesFailed = 0;
     
     for (const s of series) {
       // TODO: Implement metadata refresh from external sources (MAL, AniList, etc.)
@@ -332,12 +342,28 @@ export async function executeRefreshSeries(context: TaskContext): Promise<TaskRe
         data: { lastInfoSync: new Date() },
       });
       refreshedCount++;
+      
+      // Pre-fetch cover images for this series
+      const imageResult = await prefetchSeriesCovers({
+        imageUrl: s.imageUrl,
+        volumes: s.volumes,
+      });
+      imagesCached += imageResult.cached;
+      imagesSkipped += imageResult.skipped;
+      imagesFailed += imageResult.failed;
     }
     
     return {
       success: true,
-      message: `Refreshed ${refreshedCount} series`,
-      details: { refreshed: refreshedCount },
+      message: `Refreshed ${refreshedCount} series, cached ${imagesCached} images`,
+      details: { 
+        refreshed: refreshedCount,
+        images: {
+          cached: imagesCached,
+          skipped: imagesSkipped,
+          failed: imagesFailed,
+        },
+      },
     };
   } catch (error) {
     return {

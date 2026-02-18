@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 
+// Proxy external images through our backend to avoid rate limiting
+function proxyImageUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  // Only proxy external URLs
+  if (url.startsWith('/') || url.startsWith('data:')) return url;
+  return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 interface SearchResult {
   title: string;
   year?: number;
@@ -198,7 +206,7 @@ export default function AddSeriesPage() {
                 <div className="flex-shrink-0 w-24 h-36 bg-zinc-800 rounded-md overflow-hidden">
                   {result.coverImage ? (
                     <img
-                      src={result.coverImage}
+                      src={proxyImageUrl(result.coverImage)}
                       alt={result.title}
                       className="w-full h-full object-cover"
                     />

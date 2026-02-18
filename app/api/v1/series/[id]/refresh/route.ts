@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
+import { prefetchImages } from '@/app/lib/image-cache';
 import type { 
   ComicVineApiResponse, 
   ComicVineIssue,
@@ -172,6 +173,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ...(extractedCvId && !series.comicVineId ? { comicVineId: extractedCvId } : {}),
       },
     });
+
+    // Pre-fetch cover images in background (don't await to not block response)
+    const coverUrls = result.volumes
+      .filter(v => v.imageUrl)
+      .map(v => v.imageUrl!);
+    if (coverUrls.length > 0) {
+      console.log(`[Refresh] Pre-fetching ${coverUrls.length} cover images`);
+      prefetchImages(coverUrls).then(result => {
+        console.log(`[Refresh] Image cache: ${result.cached} cached, ${result.skipped} skipped, ${result.failed} failed`);
+      }).catch(err => {
+        console.error('[Refresh] Image prefetch error:', err);
+      });
+    }
 
     return NextResponse.json({
       message: `Refreshed from ${result.provider}: ${result.volumes.length} volumes, ${result.chapters.length} chapters`,

@@ -7,6 +7,14 @@ import { useParams, useRouter } from "next/navigation";
 import { SearchModal } from "@/app/components/SearchModal";
 import { Header } from "@/app/components/Header";
 
+// Proxy external images through our backend to avoid rate limiting
+function proxyImageUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  // Only proxy external URLs
+  if (url.startsWith('/') || url.startsWith('data:')) return url;
+  return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 interface Volume {
   id: number;
   volumeNumber: number;
@@ -406,7 +414,7 @@ export default function SeriesDetailPage() {
       <div className="relative h-48 bg-gradient-to-b from-zinc-800 to-zinc-950">
         {series.bannerImage && (
           <img
-            src={series.bannerImage}
+            src={proxyImageUrl(series.bannerImage)}
             alt=""
             className="absolute inset-0 w-full h-full object-cover opacity-30"
           />
@@ -421,7 +429,7 @@ export default function SeriesDetailPage() {
             <div className="aspect-[2/3] rounded-lg bg-zinc-800 overflow-hidden shadow-xl">
               {series.coverImage ? (
                 <img
-                  src={series.coverImage}
+                  src={proxyImageUrl(series.coverImage)}
                   alt={series.title}
                   className="w-full h-full object-cover"
                 />
@@ -613,7 +621,7 @@ export default function SeriesDetailPage() {
                       <div className="aspect-[2/3] bg-zinc-800 relative">
                         {vol.imageUrl || series.coverImage ? (
                           <img 
-                            src={vol.imageUrl || series.coverImage} 
+                            src={proxyImageUrl(vol.imageUrl || series.coverImage)} 
                             alt={`Volume ${vol.volumeNumber}`}
                             className="w-full h-full object-cover"
                           />

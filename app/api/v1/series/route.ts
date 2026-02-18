@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
+import { prefetchImages } from '@/app/lib/image-cache';
 import type { AddSeriesOptions, Series } from '@/app/lib/types';
 
 /**
@@ -219,6 +220,13 @@ export async function POST(request: NextRequest) {
     // Optionally trigger search for missing content
     if (options?.searchForMissingContent) {
       // TODO: Queue search command
+    }
+
+    // Pre-fetch cover image in background
+    if (imageUrl) {
+      prefetchImages([imageUrl]).catch(err => {
+        console.error('[Series] Cover prefetch error:', err);
+      });
     }
 
     return NextResponse.json(series, { status: 201 });

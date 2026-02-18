@@ -22,6 +22,7 @@ Inkarr is an automated comic and manga collection manager that follows the philo
 
 - **Automated Tracking** — Monitor your favorite series for new issues, chapters, or volumes
 - **Smart Metadata** — Integration with ComicVine, AniList, MangaDex for accurate tagging and organization
+- **Image Caching** — Automatic cover image caching with rate limiting to avoid API restrictions from metadata providers
 - **Download Client Support** — Native support for SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, and more
 - **Indexer Support** — Newznab and Torznab compatible indexers
 - **File Management** — Automatically renames and moves files into a structured library (e.g., `{Series Title} Vol. {Volume} ({Year})`)
@@ -151,6 +152,45 @@ Comprehensive API documentation is available at:
 - **OpenAPI Specification**: http://localhost:3000/api/docs
 
 All endpoints are RESTful APIs with JSON request/response bodies.
+
+---
+
+## 🖼️ Image Caching
+
+Inkarr includes an intelligent image caching system to avoid rate limiting from external metadata providers (MangaDex, AniList, ComicVine, etc.).
+
+### How It Works
+
+1. **Proxy Endpoint** — All cover images are served through `/api/v1/image-proxy` which fetches and caches external images
+2. **Rate Limiting** — Requests to external providers are rate-limited (500ms between requests per domain) to avoid API restrictions
+3. **Local Cache** — Images are cached locally for **90 days** (covers rarely change)
+4. **Background Prefetch** — Cover images are automatically prefetched during:
+   - Scheduled library refresh task (daily by default)
+   - Manual series metadata refresh
+   - Adding a new series
+
+### Cache Storage
+
+Images are cached in `data/.image-cache/`. To persist the cache across Docker container restarts:
+
+```yaml
+volumes:
+  - inkarr-data:/app/data  # This includes .image-cache
+```
+
+### Allowed Domains
+
+For security, only images from trusted metadata providers are proxied:
+- `uploads.mangadex.org`
+- `cdn.myanimelist.net`
+- `s4.anilist.co`
+- `media.kitsu.io`
+- `comicvine.gamespot.com`
+- `static.comicvine.com`
+
+### Cache Headers
+
+The proxy adds browser cache headers (`Cache-Control: public, max-age=604800`) so browsers also cache images locally for 7 days, reducing server load.
 
 ---
 
