@@ -14,6 +14,8 @@
 
 Inkarr is an automated comic and manga collection manager that follows the philosophy of the "Servarr" ecosystem (Radarr, Sonarr, Readarr). It allows you to track your favorite graphic novels and tankōbon volumes, ensuring your library is always up-to-date with the highest quality releases.
 
+![Inkarr Screenshot](public/screenshot.png)
+
 ---
 
 ## ✨ Key Features
