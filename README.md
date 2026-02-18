@@ -26,6 +26,7 @@ Inkarr is an automated comic and manga collection manager that follows the philo
 - **Indexer Support** — Newznab and Torznab compatible indexers
 - **File Management** — Automatically renames and moves files into a structured library (e.g., `{Series Title} Vol. {Volume} ({Year})`)
 - **Format Support** — Handles CBZ, CBR, CB7, PDF, EPUB, MOBI formats
+- **Calibre Integration** — Import your collection directly into Calibre with metadata, covers, and proper organization
 - **Multi-Language Support** — Specifically designed to handle both Western comic formats and Japanese manga release cycles
 
 ---
