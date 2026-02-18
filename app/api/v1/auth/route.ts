@@ -114,9 +114,11 @@ export async function POST(request: NextRequest) {
     });
     
     // Set auth cookie
+    // Allow disabling secure cookies for HTTP-only deployments (e.g., local network)
+    const secureCookies = process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production';
     response.cookies.set('inkarr-auth', sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: secureCookies,
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60, // 7 days
       path: '/',
