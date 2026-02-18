@@ -51,11 +51,18 @@ RUN pnpm build
 # ============================================
 FROM node:24-alpine AS runner
 
-# Install s6-overlay
+# Install s6-overlay (architecture-aware)
 RUN apk add --no-cache curl xz
 ARG S6_OVERLAY_VERSION=3.1.5.0
+ARG TARGETARCH
 RUN curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxp -C /
-RUN curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz | tar -Jxp -C /
+RUN case "${TARGETARCH}" in \
+      amd64) S6_ARCH="x86_64" ;; \
+      arm64) S6_ARCH="aarch64" ;; \
+      arm) S6_ARCH="arm" ;; \
+      *) S6_ARCH="x86_64" ;; \
+    esac && \
+    curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz | tar -Jxp -C /
 
 # Install runtime dependencies
 RUN apk add --no-cache libc6-compat python3 make g++ procps su-exec
