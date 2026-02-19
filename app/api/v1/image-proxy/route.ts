@@ -24,8 +24,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'fs
 import { join } from 'path';
 import crypto from 'crypto';
 
-// Cache directory for images
-const CACHE_DIR = join(process.cwd(), 'data', '.image-cache');
+// Cache directory for images - uses INKARR_DATA env var for Docker compatibility
+const DATA_DIR = process.env.INKARR_DATA || join(process.cwd(), 'data');
+const CACHE_DIR = join(DATA_DIR, '.image-cache');
 
 // Cache TTL in milliseconds (90 days - covers rarely change)
 const CACHE_TTL = 90 * 24 * 60 * 60 * 1000;

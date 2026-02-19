@@ -74,6 +74,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=file:/config/app.db
+ENV INKARR_DATA=/config
 ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 # Allow cookies over HTTP for local network deployments (set to 'true' if using HTTPS)
 ENV SECURE_COOKIES=false

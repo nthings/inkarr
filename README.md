@@ -67,13 +67,14 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - inkarr-data:/app/data
-      - ./data/manga:/app/data/manga
-      - ./data/comics:/app/data/comics
-      - ./data/downloads:/app/data/downloads
+      - inkarr-data:/data
+      - ./data/manga:/data/manga
+      - ./data/comics:/data/comics
+      - ./data/downloads:/data/downloads
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:/app/data/inkarr.db
+      - DATABASE_URL=file:/data/inkarr.db
+      - INKARR_DATA=/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/system/status"]
       interval: 30s
@@ -171,11 +172,13 @@ Inkarr includes an intelligent image caching system to avoid rate limiting from 
 
 ### Cache Storage
 
-Images are cached in `data/.image-cache/`. To persist the cache across Docker container restarts:
+Images are cached in `$INKARR_DATA/.image-cache/` (default: `./data/.image-cache/` locally, `/data/.image-cache/` in Docker). To persist the cache across Docker container restarts, ensure the data volume is mounted:
 
 ```yaml
 volumes:
-  - inkarr-data:/app/data  # This includes .image-cache
+  - inkarr-data:/data  # This includes .image-cache
+environment:
+  - INKARR_DATA=/data  # Tell Inkarr where data is stored
 ```
 
 ### Allowed Domains
