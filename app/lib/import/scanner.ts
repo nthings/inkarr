@@ -3,9 +3,11 @@
 
 import { readdir, stat } from 'fs/promises';
 import path from 'path';
+import { readComicInfo, extractVolumeNumber, extractSeriesTitle, ComicInfo } from './comic-info';
+import { getInkarrContentPaths } from './download-client-query';
 
-// Supported file extensions
-const SUPPORTED_EXTENSIONS = ['.cbz', '.cbr', '.cb7', '.pdf', '.epub', '.mobi'];
+// Extensions that support ComicInfo.xml metadata
+const COMIC_INFO_EXTENSIONS = ['.cbz', '.cbr', '.cb7'];
 
 export interface ScannedFile {
   filename: string;
@@ -15,6 +17,7 @@ export interface ScannedFile {
   format: string;
   modifiedAt: Date;
   parsed: ParsedFilename;
+  comicInfo?: ComicInfo;  // Metadata from ComicInfo.xml if available
 }
 
 export interface ParsedFilename {
@@ -158,12 +161,33 @@ export function parseFolderName(folderName: string): ParsedFilename & { volumeRa
 
 /**
  * Recursively scan a directory for media files
+ * @param dirPath - Directory to scan
+ * @param basePath - Base path for calculating relative paths (defaults to dirPath)
+ * @param isRootCall - Internal flag to distinguish root call from recursive calls
+ * @param options - Scan options
  */
 export async function scanDirectory(
   dirPath: string,
-  basePath: string = dirPath
+  basePath: string = dirPath,
+  isRootCall: boolean = true,
+  options: { filterByDownloadClient?: boolean; downloadClientPaths?: Set<string> } = {}
 ): Promise<ScannedFile[]> {
   const results: ScannedFile[] = [];
+  
+  // Only fetch download client paths once at the root call
+  let downloadClientPaths = options.downloadClientPaths;
+  const filterByDownloadClient = options.filterByDownloadClient ?? false;
+  
+  if (isRootCall && filterByDownloadClient) {
+    downloadClientPaths = await getInkarrContentPaths();
+    console.log(`[Scanner] Filter by download client enabled. Found ${downloadClientPaths.size} inkarr download paths:`);
+    for (const p of downloadClientPaths) {
+      console.log(`  - ${p}`);
+    }
+    if (downloadClientPaths.size === 0) {
+      console.log('[Scanner] No inkarr downloads found - no files will be imported');
+    }
+  }
 
   try {
     const entries = await readdir(dirPath, { withFileTypes: true });
@@ -173,39 +197,94 @@ export async function scanDirectory(
       const relativePath = path.relative(basePath, fullPath);
 
       if (entry.isDirectory()) {
-        // Recursively scan subdirectories
-        const subResults = await scanDirectory(fullPath, basePath);
+        // Recursively scan subdirectories (mark as not root call, pass download client paths)
+        const subResults = await scanDirectory(fullPath, basePath, false, { 
+          filterByDownloadClient, 
+          downloadClientPaths 
+        });
         results.push(...subResults);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
         
-        if (SUPPORTED_EXTENSIONS.includes(ext)) {
-          const stats = await stat(fullPath);
-          const parsed = parseFilename(entry.name);
+        // When filtering by download client, accept any file from inkarr downloads
+        // Otherwise, use extension whitelist as fallback
+        if (filterByDownloadClient && downloadClientPaths) {
+          const normalizedPath = fullPath.replace(/\/+/g, '/');
+          let isInkarrDownload = false;
           
-          // If we couldn't parse the filename well, try the parent folder
-          if (!parsed.seriesTitle || parsed.seriesTitle.length < 2) {
-            const parentFolder = path.basename(path.dirname(fullPath));
-            if (parentFolder !== path.basename(basePath)) {
-              const folderParsed = parseFolderName(parentFolder);
-              parsed.seriesTitle = folderParsed.seriesTitle || parsed.seriesTitle;
+          for (const contentPath of downloadClientPaths) {
+            const normalizedContentPath = contentPath.replace(/\/+/g, '/');
+            if (normalizedPath.startsWith(normalizedContentPath + '/') || 
+                normalizedPath === normalizedContentPath) {
+              isInkarrDownload = true;
+              break;
             }
           }
-
-          results.push({
-            filename: entry.name,
-            path: fullPath,
-            relativePath,
-            size: stats.size,
-            format: ext.slice(1).toUpperCase(),
-            modifiedAt: stats.mtime,
-            parsed,
-          });
+          
+          if (!isInkarrDownload) {
+            continue; // Skip files not from inkarr downloads
+          }
         }
+        
+        const stats = await stat(fullPath);
+        const parsed = parseFilename(entry.name);
+        
+        // Try to read ComicInfo.xml from the archive
+        let comicInfo: ComicInfo | undefined;
+        if (COMIC_INFO_EXTENSIONS.includes(ext)) {
+          const info = await readComicInfo(fullPath);
+          if (info) {
+            comicInfo = info;
+            
+            // Use ComicInfo metadata to override/improve parsed values
+            const ciSeriesTitle = extractSeriesTitle(info);
+            const ciVolumeNumber = extractVolumeNumber(info);
+            
+            // Prefer ComicInfo series title if available and looks valid
+            if (ciSeriesTitle && ciSeriesTitle.length >= 2) {
+              parsed.seriesTitle = ciSeriesTitle;
+            }
+            
+            // Prefer ComicInfo volume number if available
+            if (ciVolumeNumber !== undefined) {
+              parsed.volumeNumber = ciVolumeNumber;
+            }
+            
+            // Use ComicInfo year if available
+            if (info.year) {
+              parsed.year = info.year;
+            }
+          }
+        }
+        
+        // If we couldn't parse the filename well, try the parent folder
+        if (!parsed.seriesTitle || parsed.seriesTitle.length < 2) {
+          const parentFolder = path.basename(path.dirname(fullPath));
+          if (parentFolder !== path.basename(basePath)) {
+            const folderParsed = parseFolderName(parentFolder);
+            parsed.seriesTitle = folderParsed.seriesTitle || parsed.seriesTitle;
+          }
+        }
+
+        results.push({
+          filename: entry.name,
+          path: fullPath,
+          relativePath,
+          size: stats.size,
+          format: ext.slice(1).toUpperCase(),
+          modifiedAt: stats.mtime,
+          parsed,
+          comicInfo,
+        });
       }
     }
   } catch (error) {
-    console.error(`Error scanning directory ${dirPath}:`, error);
+    // For root call, throw the error so the API can handle it
+    // For recursive calls (subdirectories), log and continue
+    if (isRootCall) {
+      throw new Error(`Error scanning directory ${dirPath}: ${error}`);
+    }
+    console.error(`Error scanning subdirectory ${dirPath}:`, error);
   }
 
   return results;

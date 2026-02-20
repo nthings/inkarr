@@ -5,6 +5,7 @@ import prisma from '@/app/lib/db';
 import { getNamingConfig, formatSeriesFolderName, formatFileNameWithExtension, NamingTokens } from '@/app/lib/naming';
 import { rename, mkdir, access, constants } from 'fs/promises';
 import path from 'path';
+import { resolveToLocal } from '@/app/lib/path-mapping';
 
 interface RenameResult {
   success: boolean;
@@ -169,12 +170,14 @@ async function renameSeriesFiles(seriesId: number, namingConfig: any): Promise<R
     
     const expectedSeriesFolder = formatSeriesFolderName(tokens, namingConfig);
     const expectedSeriesPath = path.join(rootFolderPath, expectedSeriesFolder);
+    // Resolve to local filesystem path for file operations
+    const localSeriesPath = resolveToLocal(expectedSeriesPath);
 
     // Create series folder if it doesn't exist
     try {
-      await access(expectedSeriesPath, constants.F_OK);
+      await access(localSeriesPath, constants.F_OK);
     } catch {
-      await mkdir(expectedSeriesPath, { recursive: true });
+      await mkdir(localSeriesPath, { recursive: true });
     }
 
     // Update series path if different
@@ -202,6 +205,10 @@ async function renameSeriesFiles(seriesId: number, namingConfig: any): Promise<R
         const expectedFileName = formatFileNameWithExtension(fileTokens, namingConfig, extension);
         const expectedPath = path.join(expectedSeriesPath, expectedFileName);
 
+        // Resolve paths for file system operations
+        const localCurrentPath = resolveToLocal(mediaFile.path);
+        const localExpectedPath = resolveToLocal(expectedPath);
+
         // Skip if already correct
         if (mediaFile.path === expectedPath) {
           result.skipped++;
@@ -211,7 +218,7 @@ async function renameSeriesFiles(seriesId: number, namingConfig: any): Promise<R
 
         // Check if source file exists
         try {
-          await access(mediaFile.path, constants.F_OK);
+          await access(localCurrentPath, constants.F_OK);
         } catch {
           result.errors.push(`Source file not found: ${mediaFile.path}`);
           result.failed++;
@@ -220,7 +227,7 @@ async function renameSeriesFiles(seriesId: number, namingConfig: any): Promise<R
 
         // Check if destination already exists
         try {
-          await access(expectedPath, constants.F_OK);
+          await access(localExpectedPath, constants.F_OK);
           // Destination exists, skip to avoid overwriting
           if (mediaFile.path !== expectedPath) {
             result.errors.push(`Destination already exists: ${expectedPath}`);
@@ -232,7 +239,7 @@ async function renameSeriesFiles(seriesId: number, namingConfig: any): Promise<R
         }
 
         // Rename the file
-        await rename(mediaFile.path, expectedPath);
+        await rename(localCurrentPath, localExpectedPath);
 
         // Update database
         await prisma.mediaFile.update({

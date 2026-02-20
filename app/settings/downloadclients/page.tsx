@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/app/components/AlertDialog";
 
 interface DownloadClient {
   id: number;
@@ -15,9 +16,11 @@ interface DownloadClient {
 }
 
 export default function DownloadClientsPage() {
+  const { showConfirm } = useAlert();
   const [clients, setClients] = useState<DownloadClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingClient, setEditingClient] = useState<DownloadClient | null>(null);
   const [testing, setTesting] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<{ id: number; success: boolean; message?: string } | null>(null);
   const [modalTesting, setModalTesting] = useState(false);
@@ -52,17 +55,40 @@ export default function DownloadClientsPage() {
     }
   };
 
+  const handleEditClient = (client: DownloadClient) => {
+    setEditingClient(client);
+    setNewClient({
+      name: client.name,
+      protocol: client.protocol,
+      implementation: client.implementation,
+      host: client.host,
+      port: client.port,
+      username: client.username || "",
+      password: "",
+      apiKey: "",
+      enabled: client.enabled,
+      priority: client.priority,
+    });
+    setModalTestResult(null);
+    setShowAddModal(true);
+  };
+
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/v1/downloadclient", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newClient),
-      });
+      const isEdit = editingClient !== null;
+      const res = await fetch(
+        isEdit ? `/api/v1/downloadclient/${editingClient.id}` : "/api/v1/downloadclient",
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newClient),
+        }
+      );
 
       if (res.ok) {
         setShowAddModal(false);
+        setEditingClient(null);
         setNewClient({
           name: "",
           protocol: "TORRENT",
@@ -83,7 +109,13 @@ export default function DownloadClientsPage() {
   };
 
   const handleDeleteClient = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this download client?")) return;
+    const confirmed = await showConfirm({
+      title: "Delete Download Client",
+      message: "Are you sure you want to delete this download client?",
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) return;
     try {
       await fetch(`/api/v1/downloadclient/${id}`, { method: "DELETE" });
       fetchClients();
@@ -196,12 +228,12 @@ export default function DownloadClientsPage() {
             {clients.map((client) => (
               <div
                 key={client.id}
-                className="flex items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors gap-3"
               >
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => handleToggleEnabled(client)}
-                    className={`w-10 h-6 rounded-full transition-colors ${
+                    className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 ${
                       client.enabled ? "bg-green-600" : "bg-zinc-700"
                     }`}
                   >
@@ -211,10 +243,10 @@ export default function DownloadClientsPage() {
                       }`}
                     />
                   </button>
-                  <div>
-                    <div className="font-medium flex items-center gap-2">
-                      {client.name}
-                      <span className={`text-xs px-2 py-0.5 rounded ${
+                  <div className="min-w-0">
+                    <div className="font-medium flex flex-wrap items-center gap-2">
+                      <span className="truncate">{client.name}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded flex-shrink-0 ${
                         client.protocol === "USENET"
                           ? "bg-purple-900/50 text-purple-300"
                           : "bg-orange-900/50 text-orange-300"
@@ -222,17 +254,25 @@ export default function DownloadClientsPage() {
                         {client.implementation}
                       </span>
                     </div>
-                    <div className="text-sm text-zinc-400">
+                    <div className="text-sm text-zinc-400 truncate">
                       {client.host}:{client.port}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-14 sm:ml-0">
                   {testResult?.id === client.id && (
-                    <span className={`text-sm ${testResult.success ? "text-green-400" : "text-red-400"}`}>
+                    <span className={`text-sm w-full sm:w-auto ${
+                      testResult.success ? "text-green-400" : "text-red-400"
+                    }`}>
                       {testResult.success ? "✓ Connected" : testResult.message || "Failed"}
                     </span>
                   )}
+                  <button
+                    onClick={() => handleEditClient(client)}
+                    className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+                  >
+                    Edit
+                  </button>
                   <button
                     onClick={() => handleTestClient(client.id)}
                     disabled={testing === client.id}
@@ -255,9 +295,9 @@ export default function DownloadClientsPage() {
 
       {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-6 w-full max-w-lg">
-            <h3 className="text-lg font-medium mb-4">Add Download Client</h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-4 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-medium mb-4">{editingClient ? "Edit Download Client" : "Add Download Client"}</h3>
             <form onSubmit={handleAddClient} className="space-y-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Name</label>
@@ -270,7 +310,7 @@ export default function DownloadClientsPage() {
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-1">Protocol</label>
                   <select
@@ -313,8 +353,8 @@ export default function DownloadClientsPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
                   <label className="block text-sm text-zinc-400 mb-1">Host</label>
                   <input
                     type="text"
@@ -336,7 +376,7 @@ export default function DownloadClientsPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-1">Username</label>
                   <input
@@ -382,19 +422,22 @@ export default function DownloadClientsPage() {
                   {modalTestResult.message || (modalTestResult.success ? "Connection successful" : "Connection failed")}
                 </div>
               )}
-              <div className="flex justify-between gap-3 pt-2">
+              <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 pt-2">
                 <button
                   type="button"
                   onClick={handleTestModalClient}
                   disabled={modalTesting || !newClient.host || !newClient.port}
-                  className="px-4 py-2 text-sm font-medium border border-zinc-600 text-zinc-300 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  className="w-full sm:w-auto px-4 py-2 text-sm font-medium border border-zinc-600 text-zinc-300 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
                 >
                   {modalTesting ? "Testing..." : "Test"}
                 </button>
-                <div className="flex gap-3">
+                <div className="flex gap-3 justify-end">
                   <button
                     type="button"
-                    onClick={() => setShowAddModal(false)}
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setEditingClient(null);
+                    }}
                     className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
                   >
                     Cancel
@@ -403,7 +446,7 @@ export default function DownloadClientsPage() {
                     type="submit"
                     className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    Add
+                    {editingClient ? "Save" : "Add"}
                   </button>
                 </div>
               </div>

@@ -10,6 +10,7 @@ import {
   formatFileNameWithExtension,
   NamingTokens 
 } from '@/app/lib/naming';
+import { resolveToLocal, resolveToDb } from '@/app/lib/path-mapping';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -130,7 +131,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         cleanTitle: series.cleanTitle,
       };
       const seriesFolderName = formatSeriesFolderName(seriesTokens, namingConfig);
-      const seriesFolder = series.path || path.join(series.rootFolderPath, seriesFolderName);
+      // Resolve paths to local filesystem
+      const localRootPath = resolveToLocal(series.rootFolderPath);
+      const localSeriesPath = series.path ? resolveToLocal(series.path) : null;
+      const seriesFolder = localSeriesPath || path.join(localRootPath, seriesFolderName);
 
       try {
         await mkdir(seriesFolder, { recursive: true });
@@ -183,14 +187,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (!series.path) {
         await prisma.series.update({
           where: { id: series.id },
-          data: { path: seriesFolder },
+          data: { path: resolveToDb(seriesFolder) },
         });
       }
     }
 
+    // Convert destination path to DB format for database storage
+    const dbDestinationPath = resolveToDb(destinationPath);
+
     // Check if file is already linked
     const existingFile = await prisma.mediaFile.findFirst({
-      where: { path: destinationPath },
+      where: { path: dbDestinationPath },
     });
 
     if (existingFile) {
@@ -212,7 +219,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: {
         seriesId: series.id,
         chapterId,
-        path: destinationPath,
+        path: dbDestinationPath,
         relativePath,
         size: BigInt(fileStats.size),
         format: getFileFormat(ext) as any,
@@ -231,7 +238,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         data: JSON.stringify({
           manualLink: true,
           sourcePath: filePath,
-          destinationPath,
+          destinationPath: dbDestinationPath,
         }),
       },
     });
@@ -239,7 +246,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({
       success: true,
       mediaFileId: mediaFile.id,
-      path: destinationPath,
+      path: dbDestinationPath,
     });
   } catch (error) {
     console.error('Error linking file to chapter:', error);

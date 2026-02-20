@@ -370,6 +370,7 @@ model RootFolder {
   id                  Int       @id @default(autoincrement())
   path                String    @unique
   name                String?
+  mediaType           MediaType @default(MANGA) // COMIC, MANGA, etc.
   defaultMonitorOption MonitorStatus @default(ALL)
   defaultQualityProfileId Int?
   defaultMetadataProfileId Int?

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/app/components/AlertDialog";
 
 interface CalibreSettings {
   id: number;
@@ -61,6 +62,7 @@ const outputFormats = [
 ];
 
 export default function CalibreSettingsPage() {
+  const { showAlert, showConfirm } = useAlert();
   const [settings, setSettings] = useState<CalibreSettings[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -131,7 +133,7 @@ export default function CalibreSettingsPage() {
         fetchSettings();
       } else {
         const error = await res.json();
-        alert(error.error || "Failed to save settings");
+        await showAlert({ message: error.error || "Failed to save settings", type: "error" });
       }
     } catch (error) {
       console.error("Failed to save Calibre settings:", error);
@@ -160,7 +162,13 @@ export default function CalibreSettingsPage() {
   };
 
   const handleDeleteSettings = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this Calibre configuration?")) return;
+    const confirmed = await showConfirm({
+      title: "Delete Configuration",
+      message: "Are you sure you want to delete this Calibre configuration?",
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) return;
     try {
       await fetch(`/api/v1/calibre/${id}`, { method: "DELETE" });
       fetchSettings();
@@ -314,12 +322,12 @@ export default function CalibreSettingsPage() {
             {settings.map((setting) => (
               <div
                 key={setting.id}
-                className="flex items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors gap-3"
               >
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => handleToggleEnabled(setting)}
-                    className={`w-10 h-6 rounded-full transition-colors ${
+                    className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 ${
                       setting.enable ? "bg-green-600" : "bg-zinc-700"
                     }`}
                   >
@@ -329,16 +337,16 @@ export default function CalibreSettingsPage() {
                       }`}
                     />
                   </button>
-                  <div>
-                    <div className="font-medium flex items-center gap-2">
-                      {setting.name}
+                  <div className="min-w-0">
+                    <div className="font-medium flex flex-wrap items-center gap-2">
+                      <span className="truncate">{setting.name}</span>
                       {setting.library && (
                         <span className="text-xs px-2 py-0.5 rounded bg-purple-900/50 text-purple-300">
                           {setting.library}
                         </span>
                       )}
                     </div>
-                    <div className="text-sm text-zinc-400">
+                    <div className="text-sm text-zinc-400 truncate">
                       {setting.useSsl ? "https" : "http"}://{setting.host}:{setting.port}
                       {setting.urlBase && `/${setting.urlBase}`}
                     </div>
@@ -349,10 +357,10 @@ export default function CalibreSettingsPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-14 sm:ml-0">
                   {testResult?.id === setting.id && (
                     <span
-                      className={`text-sm ${
+                      className={`text-sm w-full sm:w-auto ${
                         testResult.result.success ? "text-green-400" : "text-red-400"
                       }`}
                     >
@@ -389,8 +397,8 @@ export default function CalibreSettingsPage() {
 
       {/* Add/Edit Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
-          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-6 w-full max-w-lg my-8">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-4">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-4 sm:p-6 w-full max-w-lg my-8">
             <h3 className="text-lg font-medium mb-4">
               {editingId ? "Edit Calibre Server" : "Add Calibre Server"}
             </h3>
@@ -407,8 +415,8 @@ export default function CalibreSettingsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
                   <label className="block text-sm text-zinc-400 mb-1">Host</label>
                   <input
                     type="text"
@@ -456,7 +464,7 @@ export default function CalibreSettingsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-1">Username (optional)</label>
                   <input
@@ -572,16 +580,16 @@ export default function CalibreSettingsPage() {
                 </div>
               )}
 
-              <div className="flex justify-between gap-3 pt-2">
+              <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 pt-2">
                 <button
                   type="button"
                   onClick={handleTestModalSettings}
                   disabled={modalTesting || !newSettings.host || !newSettings.port}
-                  className="px-4 py-2 text-sm font-medium border border-zinc-600 text-zinc-300 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  className="w-full sm:w-auto px-4 py-2 text-sm font-medium border border-zinc-600 text-zinc-300 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
                 >
                   {modalTesting ? "Testing..." : "Test Connection"}
                 </button>
-                <div className="flex gap-3">
+                <div className="flex gap-3 justify-end">
                   <button
                     type="button"
                     onClick={() => {

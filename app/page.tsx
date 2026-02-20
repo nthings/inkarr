@@ -19,17 +19,17 @@ export default async function Home() {
       <Header />
 
       {/* Main Content */}
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 md:py-8">
         {/* Welcome Section */}
-        <div className="mb-8 rounded-lg bg-zinc-900 p-8 border border-zinc-800">
-          <h2 className="mb-2 text-2xl font-semibold">Welcome to Inkarr</h2>
-          <p className="text-zinc-400">
+        <div className="mb-6 md:mb-8 rounded-lg bg-zinc-900 p-4 sm:p-6 md:p-8 border border-zinc-800">
+          <h2 className="mb-2 text-xl md:text-2xl font-semibold">Welcome to Inkarr</h2>
+          <p className="text-sm md:text-base text-zinc-400">
             Your automated comic and manga collection manager
           </p>
         </div>
 
         {/* Quick Stats */}
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-6 md:mb-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           <StatCard title="Series" value={seriesCount.toString()} icon="📚" />
           <StatCard title="Volumes" value={volumeCount.toString()} icon="📖" />
           <StatCard title="Chapters" value={chapterCount.toString()} icon="📄" />
@@ -37,9 +37,9 @@ export default async function Home() {
         </div>
 
         {/* Getting Started */}
-        <div className="rounded-lg bg-zinc-900 p-6 border border-zinc-800">
-          <h3 className="mb-4 text-lg font-semibold">Getting Started</h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-lg bg-zinc-900 p-4 sm:p-6 border border-zinc-800">
+          <h3 className="mb-4 text-base md:text-lg font-semibold">Getting Started</h3>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <SetupCard
               step={1}
               title="Add Root Folder"
@@ -80,16 +80,16 @@ export default async function Home() {
         </div>
 
         {/* API Info */}
-        <div className="mt-8 rounded-lg bg-zinc-900/50 p-4 border border-zinc-800">
-          <div className="flex items-center justify-between">
+        <div className="mt-6 md:mt-8 rounded-lg bg-zinc-900/50 p-4 border border-zinc-800">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <p className="text-sm text-zinc-400 mb-2">
+              <p className="text-xs sm:text-sm text-zinc-400 mb-2">
                 REST API available at{" "}
-                <code className="rounded bg-zinc-800 px-2 py-1 text-zinc-300">
+                <code className="rounded bg-zinc-800 px-2 py-0.5 text-zinc-300 text-xs">
                   /api/v1/
                 </code>
               </p>
-              <div className="flex gap-4 text-sm">
+              <div className="flex gap-4 text-xs sm:text-sm">
                 <Link href="/api/v1/system/status" className="text-blue-400 hover:underline">
                   System Status
                 </Link>
@@ -111,13 +111,13 @@ export default async function Home() {
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: string }) {
   return (
-    <div className="rounded-lg bg-zinc-900 p-4 border border-zinc-800">
+    <div className="rounded-lg bg-zinc-900 p-3 sm:p-4 border border-zinc-800">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-zinc-400">{title}</p>
-          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-xs sm:text-sm text-zinc-400">{title}</p>
+          <p className="text-xl sm:text-2xl font-bold">{value}</p>
         </div>
-        <span className="text-3xl">{icon}</span>
+        <span className="text-2xl sm:text-3xl">{icon}</span>
       </div>
     </div>
   );
@@ -137,15 +137,15 @@ function SetupCard({
   return (
     <Link
       href={href}
-      className="group rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+      className="group rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 sm:p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
     >
       <div className="mb-2 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold">
+        <span className="flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold">
           {step}
         </span>
-        <h4 className="font-medium group-hover:text-blue-400 transition-colors">{title}</h4>
+        <h4 className="text-sm sm:text-base font-medium group-hover:text-blue-400 transition-colors">{title}</h4>
       </div>
-      <p className="text-sm text-zinc-400">{description}</p>
+      <p className="text-xs sm:text-sm text-zinc-400">{description}</p>
     </Link>
   );
 }

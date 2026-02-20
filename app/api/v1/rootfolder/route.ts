@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
 import { stat, statfs } from 'fs/promises';
+import { resolveToLocal, resolveToDb } from '@/app/lib/path-mapping';
 
 async function getFreeSpace(path: string): Promise<number | null> {
   try {
@@ -33,6 +34,7 @@ async function getFreeSpace(path: string): Promise<number | null> {
  *                   id: { type: integer }
  *                   path: { type: string }
  *                   name: { type: string }
+ *                   mediaType: { type: string, enum: [COMIC, MANGA, MANHWA, MANHUA, WEBTOON] }
  *                   accessible: { type: boolean }
  *                   freeSpace: { type: integer, nullable: true }
  */
@@ -48,8 +50,10 @@ export async function GET() {
     const foldersWithSpace = await Promise.all(
       rootFolders.map(async (folder) => {
         try {
-          const stats = await stat(folder.path);
-          const freeSpace = await getFreeSpace(folder.path);
+          // Use path mapping to resolve DB path to local filesystem path
+          const localPath = resolveToLocal(folder.path);
+          const stats = await stat(localPath);
+          const freeSpace = await getFreeSpace(localPath);
           return {
             ...folder,
             accessible: stats.isDirectory(),
@@ -81,12 +85,14 @@ export async function POST(request: NextRequest) {
     const {
       path,
       name,
+      mediaType = 'MANGA',
       defaultMonitorOption = 'ALL',
       defaultQualityProfileId,
       defaultMetadataProfileId,
     }: {
       path: string;
       name?: string;
+      mediaType?: 'COMIC' | 'MANGA' | 'MANHWA' | 'MANHUA' | 'WEBTOON';
       defaultMonitorOption?: string;
       defaultQualityProfileId?: number;
       defaultMetadataProfileId?: number;
@@ -99,9 +105,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve input path to local filesystem path for validation
+    const localPath = resolveToLocal(path);
+    // Convert to DB path for storage (handles reverse mapping if user provided local path)
+    const dbPath = resolveToDb(path);
+
     // Check if path exists and is a directory
     try {
-      const stats = await stat(path);
+      const stats = await stat(localPath);
       if (!stats.isDirectory()) {
         return NextResponse.json(
           { error: 'Path is not a directory' },
@@ -115,9 +126,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if already exists
-    const existing = await prisma.rootFolder.findUnique({
-      where: { path },
+    // Check if already exists (check both original and DB path)
+    const existing = await prisma.rootFolder.findFirst({
+      where: { 
+        OR: [
+          { path: path },
+          { path: dbPath },
+        ]
+      },
     });
     if (existing) {
       return NextResponse.json(
@@ -130,6 +146,7 @@ export async function POST(request: NextRequest) {
       data: {
         path,
         name: name || path.split('/').pop() || path,
+        mediaType: mediaType as any,
         defaultMonitorOption: defaultMonitorOption as any,
         defaultQualityProfileId,
         defaultMetadataProfileId,

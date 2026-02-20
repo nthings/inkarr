@@ -67,28 +67,28 @@ export default function LibraryPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <Header />
 
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 md:py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold">Library</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <h2 className="text-xl md:text-2xl font-semibold">Library</h2>
           <Link
             href="/add/new"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors text-center sm:w-auto"
           >
             + Add Series
           </Link>
         </div>
 
         {/* Filters & View Toggle */}
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-6">
           <input
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter series..."
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full sm:w-auto sm:min-w-[200px] rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          <div className="flex rounded-lg border border-zinc-700 overflow-hidden ml-auto">
+          <div className="flex rounded-lg border border-zinc-700 overflow-hidden sm:ml-auto self-start">
             <button
               onClick={() => setViewMode("grid")}
               className={`px-3 py-2 text-sm ${
@@ -189,41 +189,44 @@ export default function LibraryPage() {
               <Link
                 key={s.id}
                 href={`/series/${s.id}`}
-                className="flex items-center gap-4 rounded-lg bg-zinc-900 border border-zinc-800 p-4 hover:border-zinc-700 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 rounded-lg bg-zinc-900 border border-zinc-800 p-4 hover:border-zinc-700 transition-colors"
               >
-                <div className="w-12 h-18 bg-zinc-800 rounded overflow-hidden flex-shrink-0">
-                  {s.coverImage ? (
-                    <img
-                      src={proxyImageUrl(s.coverImage)}
-                      alt={s.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-zinc-600">
-                      <span className="text-xl">📚</span>
-                    </div>
-                  )}
+                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                  <div className="w-12 h-18 bg-zinc-800 rounded overflow-hidden flex-shrink-0">
+                    {s.coverImage ? (
+                      <img
+                        src={proxyImageUrl(s.coverImage)}
+                        alt={s.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                        <span className="text-xl">📚</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium truncate">{s.title}</h3>
+                    <p className="text-sm text-zinc-400">
+                      {s.year && `${s.year} · `}
+                      {s.mediaType} · {s.status}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium truncate">{s.title}</h3>
-                  <p className="text-sm text-zinc-400">
-                    {s.year && `${s.year} · `}
-                    {s.mediaType} · {s.status}
-                  </p>
+                <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 pl-15 sm:pl-0">
+                  <div className="text-right text-sm text-zinc-400">
+                    <div>{s.volumeCount} Vol · {s.chapterCount} Ch</div>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded flex-shrink-0 ${
+                    s.monitorStatus === "ALL" 
+                      ? "bg-green-600" 
+                      : s.monitorStatus === "NONE"
+                      ? "bg-zinc-600"
+                      : "bg-yellow-600"
+                  }`}>
+                    {s.monitorStatus === "ALL" ? "Monitored" : s.monitorStatus === "NONE" ? "Unmonitored" : "Partial"}
+                  </span>
                 </div>
-                <div className="text-right text-sm text-zinc-400">
-                  <div>{s.volumeCount} Volumes</div>
-                  <div>{s.chapterCount} Chapters</div>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded ${
-                  s.monitorStatus === "ALL" 
-                    ? "bg-green-600" 
-                    : s.monitorStatus === "NONE"
-                    ? "bg-zinc-600"
-                    : "bg-yellow-600"
-                }`}>
-                  {s.monitorStatus === "ALL" ? "Monitored" : s.monitorStatus === "NONE" ? "Unmonitored" : "Partial"}
-                </span>
               </Link>
             ))}
           </div>

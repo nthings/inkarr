@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scanDirectory, importFiles, type ImportOptions } from '@/app/lib/import';
 import prisma from '@/app/lib/db';
+import { resolveToLocal } from '@/app/lib/path-mapping';
+import { CONFIG_DEFAULTS } from '@/app/lib/config-defaults';
 
 /**
  * @swagger
@@ -47,6 +49,7 @@ export async function POST(request: NextRequest) {
       copyMode = false,
       deleteSource = true,
       selectedFiles,
+      filterByDownloadClient,
     }: {
       downloadPath?: string;
       rootFolderPath?: string;
@@ -55,6 +58,7 @@ export async function POST(request: NextRequest) {
       copyMode?: boolean;
       deleteSource?: boolean;
       selectedFiles?: string[]; // Optional array of specific file paths to import
+      filterByDownloadClient?: boolean; // Only import files from downloads with the configured category
     } = body;
     
     // Get download path from config or use default
@@ -63,29 +67,48 @@ export async function POST(request: NextRequest) {
       const config = await prisma.config.findUnique({
         where: { key: 'DownloadsFolder' },
       });
-      scanPath = config?.value || process.env.DOWNLOADS_FOLDER || './data/downloads';
-    }
-    
-    // Get root folder path
-    let targetRootPath = rootFolderPath;
-    if (!targetRootPath) {
-      // Get first root folder as default
-      const rootFolder = await prisma.rootFolder.findFirst({
-        orderBy: { id: 'asc' },
+      scanPath = config?.value || process.env.DOWNLOADS_FOLDER || '/data/downloads';
+      
+      // Check for category subfolder
+      const categoryConfig = await prisma.config.findUnique({
+        where: { key: 'DownloadsCategory' },
       });
-      
-      if (!rootFolder) {
-        return NextResponse.json(
-          { error: 'No root folder configured. Please add a root folder first.' },
-          { status: 400 }
-        );
+      const category = categoryConfig?.value;
+      if (category) {
+        scanPath = `${scanPath}/${category}`;
       }
-      
-      targetRootPath = rootFolder.path;
     }
     
-    // Scan the downloads directory
-    let files = await scanDirectory(scanPath);
+    // Check that at least one root folder exists
+    const rootFolderCount = await prisma.rootFolder.count();
+    if (rootFolderCount === 0) {
+      return NextResponse.json(
+        { error: 'No root folder configured. Please add a root folder first.' },
+        { status: 400 }
+      );
+    }
+    
+    // Optional explicit root folder path (if not provided, importer auto-selects based on media type)
+    const localRootPath = rootFolderPath ? resolveToLocal(rootFolderPath) : undefined;
+    
+    // Resolve download path to local filesystem path
+    const localScanPath = resolveToLocal(scanPath);
+    
+    // Determine if we should filter by download client category
+    // Uses FilterByDownloadClient config (defaults to true)
+    let shouldFilterByClient = filterByDownloadClient;
+    if (shouldFilterByClient === undefined) {
+      const filterConfig = await prisma.config.findUnique({
+        where: { key: 'FilterByDownloadClient' },
+      });
+      // Default to true (enabled)
+      shouldFilterByClient = filterConfig?.value !== 'false';
+    }
+    
+    // Scan the downloads directory with optional download client filtering
+    let files = await scanDirectory(localScanPath, localScanPath, true, {
+      filterByDownloadClient: shouldFilterByClient
+    });
     
     // Filter to selected files if specified
     if (selectedFiles && selectedFiles.length > 0) {
@@ -102,13 +125,20 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Import options
+    // Get requireVolumeMatch config
+    const requireVolumeMatchConfig = await prisma.config.findUnique({
+      where: { key: 'RequireVolumeMatch' },
+    });
+    const requireVolumeMatch = requireVolumeMatchConfig?.value !== 'false'; // Default true
+    
+    // Import options (rootFolderPath is optional - importer will auto-select based on media type)
     const options: ImportOptions = {
-      rootFolderPath: targetRootPath,
+      rootFolderPath: localRootPath,
       seriesId,
       qualityProfileId,
       copyMode,
       deleteSource,
+      requireVolumeMatch,
     };
     
     // Create a command entry to track the import
@@ -117,7 +147,7 @@ export async function POST(request: NextRequest) {
         name: 'ImportDownloads',
         body: JSON.stringify({
           downloadPath: scanPath,
-          rootFolderPath: targetRootPath,
+          rootFolderPath: rootFolderPath || 'auto-select',
           fileCount: files.length,
         }),
         status: 'started',

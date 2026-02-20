@@ -23,6 +23,7 @@ export function Header() {
   const [user, setUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -81,7 +82,9 @@ export function Header() {
             <img src="/logo.png" alt="Inkarr" className="w-50" />            
           </Link>
         </div>
-        <nav className="flex items-center gap-6">
+
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-6">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -148,7 +151,70 @@ export function Header() {
             </div>
           )}
         </nav>
+
+        {/* Mobile Menu Button */}
+        <div className="flex md:hidden items-center gap-2">
+          <ImportManager />
+          <DownloadQueue />
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-2 text-zinc-400 hover:text-white transition-colors"
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile Menu Dropdown */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-zinc-800 bg-zinc-900">
+          <nav className="px-4 py-3 space-y-1">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive(item.href)
+                    ? "bg-zinc-800 text-white font-medium"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
+            {authEnabled && user && (
+              <>
+                <div className="border-t border-zinc-800 my-2" />
+                <div className="px-3 py-2">
+                  <p className="text-sm font-medium text-white">{user.username}</p>
+                  <p className="text-xs text-zinc-400">
+                    {user.isAdmin ? "Administrator" : "User"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-zinc-800/50 transition-colors"
+                >
+                  Sign out
+                </button>
+              </>
+            )}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

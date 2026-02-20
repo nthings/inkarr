@@ -194,9 +194,9 @@ export default function TasksSettingsPage() {
             key={task.name}
             className="rounded-lg bg-zinc-900 border border-zinc-800 p-4"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <h4 className="font-medium">{task.name}</h4>
                   {task.isRunning && (
                     <span className="flex items-center gap-1 text-xs text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded-full">
@@ -220,15 +220,15 @@ export default function TasksSettingsPage() {
                 )}
                 
                 {/* Timing info */}
-                <div className="mt-2 flex items-center gap-4 text-xs text-zinc-500">
-                  <span>Last: {formatDate(task.lastExecution)} {task.lastExecution && `(${getRelativeTime(task.lastExecution)})`}</span>
+                <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-zinc-500">
+                  <span className="truncate">Last: {formatDate(task.lastExecution)} {task.lastExecution && `(${getRelativeTime(task.lastExecution)})`}</span>
                   {task.enabled && task.nextExecution && (
                     <span>Next: {getRelativeTime(task.nextExecution)}</span>
                   )}
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-shrink-0">
                 {/* Run Now Button */}
                 <button
                   onClick={() => handleRunNow(task.name)}
@@ -253,7 +253,7 @@ export default function TasksSettingsPage() {
                 <button
                   onClick={() => handleToggle(task.name, !task.enabled)}
                   disabled={saving === task.name}
-                  className={`w-12 h-7 rounded-full transition-colors relative ${
+                  className={`w-12 h-7 rounded-full transition-colors relative flex-shrink-0 ${
                     task.enabled ? "bg-green-600" : "bg-zinc-700"
                   } ${saving === task.name ? "opacity-50" : ""}`}
                 >
@@ -268,7 +268,7 @@ export default function TasksSettingsPage() {
 
             {/* Interval Configuration */}
             <div className="mt-4 pt-4 border-t border-zinc-800">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <label className="text-sm text-zinc-400">Run every:</label>
                 <select
                   value={task.interval}

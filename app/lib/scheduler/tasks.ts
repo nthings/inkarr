@@ -2,6 +2,7 @@
 // Each task runs at a configurable interval to perform background operations
 
 import prisma from '@/app/lib/db';
+import { resolveToLocal } from '@/app/lib/path-mapping';
 
 // Task execution context
 export interface TaskContext {
@@ -99,9 +100,17 @@ export async function executeAutoImport(context: TaskContext): Promise<TaskResul
   const { scanDirectory, importFiles } = await import('@/app/lib/import');
   
   // Get configuration
-  const downloadPath = await getConfigValue('DownloadsFolder', './data/downloads');
+  let downloadPath = await getConfigValue('DownloadsFolder', '/data/downloads');
+  const category = await getConfigValue('DownloadsCategory', '');
   const deleteSource = await getConfigValue('DeleteSourceAfterImport', 'true') === 'true';
   const copyMode = await getConfigValue('CopyModeEnabled', 'false') === 'true';
+  // Check if we should filter by download client category (only import files from inkarr-tagged downloads)
+  const filterByDownloadClient = await getConfigValue('FilterByDownloadClient', 'true') === 'true';
+  
+  // Append category subfolder if configured
+  if (category) {
+    downloadPath = `${downloadPath}/${category}`;
+  }
   
   // Get root folder
   const rootFolder = await prisma.rootFolder.findFirst({
@@ -115,9 +124,13 @@ export async function executeAutoImport(context: TaskContext): Promise<TaskResul
     };
   }
   
+  // Resolve paths to local filesystem
+  const localDownloadPath = resolveToLocal(downloadPath);
+  const localRootPath = resolveToLocal(rootFolder.path);
+  
   try {
-    // Scan downloads folder
-    const files = await scanDirectory(downloadPath);
+    // Scan downloads folder - filter by download client category if enabled
+    const files = await scanDirectory(localDownloadPath, localDownloadPath, true, { filterByDownloadClient });
     
     if (files.length === 0) {
       return {
@@ -129,7 +142,7 @@ export async function executeAutoImport(context: TaskContext): Promise<TaskResul
     
     // Import files
     const result = await importFiles(files, {
-      rootFolderPath: rootFolder.path,
+      rootFolderPath: localRootPath,
       deleteSource,
       copyMode,
     });

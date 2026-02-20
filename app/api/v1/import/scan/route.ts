@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scanDirectory, groupBySeries, type ScannedFile } from '@/app/lib/import';
 import prisma from '@/app/lib/db';
+import { resolveToLocal } from '@/app/lib/path-mapping';
+import { CONFIG_DEFAULTS } from '@/app/lib/config-defaults';
 
 interface SeriesGroup {
   seriesTitle: string;
@@ -25,6 +27,11 @@ interface SeriesGroup {
  *         schema:
  *           type: string
  *         description: Path to scan (uses config default if not provided)
+ *       - in: query
+ *         name: filterByClient
+ *         schema:
+ *           type: boolean
+ *         description: Only show files from downloads with the configured category tag
  *     responses:
  *       200:
  *         description: List of files grouped by series
@@ -42,6 +49,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const downloadPath = searchParams.get('path');
+    const filterByClientParam = searchParams.get('filterByClient');
     
     // Get download path from config or use default
     let scanPath = downloadPath;
@@ -50,11 +58,37 @@ export async function GET(request: NextRequest) {
       const config = await prisma.config.findUnique({
         where: { key: 'DownloadsFolder' },
       });
-      scanPath = config?.value || process.env.DOWNLOADS_FOLDER || './data/downloads';
+      scanPath = config?.value || process.env.DOWNLOADS_FOLDER || '/data/downloads';
+      
+      // Check for category subfolder
+      const categoryConfig = await prisma.config.findUnique({
+        where: { key: 'DownloadsCategory' },
+      });
+      const category = categoryConfig?.value;
+      if (category) {
+        scanPath = `${scanPath}/${category}`;
+      }
     }
     
-    // Scan the directory
-    const files = await scanDirectory(scanPath);
+    // Determine if we should filter by download client category
+    // Uses FilterByDownloadClient config (defaults to true)
+    let filterByDownloadClient = filterByClientParam === 'true';
+    if (filterByClientParam === null) {
+      // Check if filtering is enabled in config
+      const filterConfig = await prisma.config.findUnique({
+        where: { key: 'FilterByDownloadClient' },
+      });
+      // Default to true (enabled)
+      filterByDownloadClient = filterConfig?.value !== 'false';
+    }
+    
+    // Resolve to local filesystem path (for non-Docker environments)
+    const localScanPath = resolveToLocal(scanPath);
+    
+    // Scan the directory with optional download client filtering
+    const files = await scanDirectory(localScanPath, localScanPath, true, { 
+      filterByDownloadClient 
+    });
     
     if (files.length === 0) {
       return NextResponse.json({

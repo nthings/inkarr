@@ -112,10 +112,10 @@ export default function AddSeriesPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <Header />
       
-      <main className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold mb-2">Add New Series</h2>
-          <p className="text-zinc-400">
+      <main className="mx-auto max-w-7xl px-4 py-6 md:py-8">
+        <div className="mb-6 md:mb-8">
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">Add New Series</h2>
+          <p className="text-sm md:text-base text-zinc-400">
             Search for comics or manga to add to your library
           </p>
         </div>
@@ -130,7 +130,7 @@ export default function AddSeriesPage() {
                 setResults([]);
                 setSearched(false);
               }}
-              className={`px-6 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                 mediaSource === "comics"
                   ? "bg-red-600 text-white"
                   : "text-zinc-400 hover:text-white"
@@ -145,7 +145,7 @@ export default function AddSeriesPage() {
                 setResults([]);
                 setSearched(false);
               }}
-              className={`px-6 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                 mediaSource === "manga"
                   ? "bg-blue-600 text-white"
                   : "text-zinc-400 hover:text-white"
@@ -156,26 +156,26 @@ export default function AddSeriesPage() {
           </div>
           <p className="text-xs text-zinc-500 mt-2">
             {mediaSource === "comics" 
-              ? "Searching ComicVine for Western comics, graphic novels, and comic book series"
-              : "Searching AniList for manga, manhwa, manhua, and light novels"
+              ? "Searching ComicVine for Western comics"
+              : "Searching AniList for manga, manhwa"
             }
           </p>
         </div>
 
         {/* Search Form */}
-        <form onSubmit={handleSearch} className="mb-8">
-          <div className="flex gap-4">
+        <form onSubmit={handleSearch} className="mb-6 md:mb-8">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={mediaSource === "comics" ? "Search for comics..." : "Search for manga..."}
-              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2.5 sm:py-3 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="rounded-lg bg-blue-600 px-6 py-2.5 sm:py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? "Searching..." : "Search"}
             </button>
@@ -196,14 +196,14 @@ export default function AddSeriesPage() {
         )}
 
         {!loading && results.length > 0 && (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {results.map((result, index) => (
               <div
                 key={`${result.provider}-${result.providerId}-${index}`}
-                className="flex gap-4 rounded-lg bg-zinc-900 border border-zinc-800 p-4 hover:border-zinc-700 transition-colors"
+                className="flex flex-col sm:flex-row gap-3 sm:gap-4 rounded-lg bg-zinc-900 border border-zinc-800 p-3 sm:p-4 hover:border-zinc-700 transition-colors"
               >
                 {/* Cover Image */}
-                <div className="flex-shrink-0 w-24 h-36 bg-zinc-800 rounded-md overflow-hidden">
+                <div className="flex-shrink-0 w-20 h-30 sm:w-24 sm:h-36 bg-zinc-800 rounded-md overflow-hidden mx-auto sm:mx-0">
                   {result.coverImage ? (
                     <img
                       src={proxyImageUrl(result.coverImage)}
@@ -212,22 +212,22 @@ export default function AddSeriesPage() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-zinc-600">
-                      <span className="text-3xl">📚</span>
+                      <span className="text-2xl sm:text-3xl">📚</span>
                     </div>
                   )}
                 </div>
 
                 {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0 text-center sm:text-left">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
                     <div className="min-w-0">
-                      <h3 className="text-lg font-medium truncate">
+                      <h3 className="text-base sm:text-lg font-medium truncate">
                         {result.title}
                         {result.year && (
                           <span className="text-zinc-500 ml-2">({result.year})</span>
                         )}
                       </h3>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1">
                         <span className={`text-xs px-2 py-0.5 rounded ${
                           result.provider === "comicvine" 
                             ? "bg-red-900/50 text-red-300" 
@@ -247,7 +247,7 @@ export default function AddSeriesPage() {
                     </div>
                     <button
                       onClick={() => handleAdd(result)}
-                      className="flex-shrink-0 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
+                      className="flex-shrink-0 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors w-full sm:w-auto"
                     >
                       + Add
                     </button>

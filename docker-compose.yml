@@ -15,10 +15,6 @@ services:
       - ./data/manga:/data/manga
       - ./data/comics:/data/comics
       - ./data/downloads:/data/downloads
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=file:/data/dev.db
-      - INKARR_DATA=/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/system/status"]
       interval: 30s

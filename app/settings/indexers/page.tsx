@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/app/components/AlertDialog";
 
 interface Indexer {
   id: number;
@@ -20,6 +21,7 @@ interface Indexer {
 }
 
 export default function IndexersPage() {
+  const { showConfirm } = useAlert();
   const [indexers, setIndexers] = useState<Indexer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -98,7 +100,13 @@ export default function IndexersPage() {
   };
 
   const handleDeleteIndexer = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this indexer?")) return;
+    const confirmed = await showConfirm({
+      title: "Delete Indexer",
+      message: "Are you sure you want to delete this indexer?",
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) return;
     try {
       await fetch(`/api/v1/indexer/${id}`, { method: "DELETE" });
       fetchIndexers();
@@ -217,18 +225,18 @@ export default function IndexersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h3 className="text-lg font-medium">Indexers</h3>
-        <p className="text-sm text-zinc-400">Configure Newznab and Torznab indexers for searching releases</p>
+        <h3 className="text-base md:text-lg font-medium">Indexers</h3>
+        <p className="text-xs md:text-sm text-zinc-400">Configure Newznab and Torznab indexers for searching releases</p>
       </div>
 
       <div className="rounded-lg bg-zinc-900 border border-zinc-800 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-          <h4 className="font-medium">Configured Indexers</h4>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 md:p-4 border-b border-zinc-800">
+          <h4 className="font-medium text-sm md:text-base">Configured Indexers</h4>
           <button
             onClick={() => setShowAddModal(true)}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors w-full sm:w-auto"
           >
             + Add Indexer
           </button>
@@ -239,7 +247,7 @@ export default function IndexersPage() {
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
           </div>
         ) : indexers.length === 0 ? (
-          <div className="p-8 text-center text-zinc-400">
+          <div className="p-6 md:p-8 text-center text-zinc-400 text-sm">
             No indexers configured. Add one to search for releases.
           </div>
         ) : (
@@ -247,12 +255,12 @@ export default function IndexersPage() {
             {indexers.map((indexer) => (
               <div
                 key={indexer.id}
-                className="flex items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 md:p-4 hover:bg-zinc-800/50 transition-colors"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 md:gap-4">
                   <button
                     onClick={() => handleToggleEnabled(indexer)}
-                    className={`w-10 h-6 rounded-full transition-colors ${
+                    className={`flex-shrink-0 w-10 h-6 rounded-full transition-colors ${
                       indexer.enableRss ? "bg-green-600" : "bg-zinc-700"
                     }`}
                   >
@@ -262,10 +270,10 @@ export default function IndexersPage() {
                       }`}
                     />
                   </button>
-                  <div>
-                    <div className="font-medium flex items-center gap-2">
-                      {indexer.name}
-                      <span className={`text-xs px-2 py-0.5 rounded ${
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm md:text-base flex flex-wrap items-center gap-2">
+                      <span className="truncate">{indexer.name}</span>
+                      <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded ${
                         indexer.protocol === "USENET"
                           ? "bg-purple-900/50 text-purple-300"
                           : "bg-orange-900/50 text-orange-300"
@@ -273,31 +281,31 @@ export default function IndexersPage() {
                         {indexer.protocol}
                       </span>
                     </div>
-                    <div className="text-sm text-zinc-400">{indexer.settings?.baseUrl}</div>
+                    <div className="text-xs md:text-sm text-zinc-400 truncate">{indexer.settings?.baseUrl}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-13 sm:ml-0">
                   {testResult?.id === indexer.id && (
-                    <span className={`text-sm ${testResult.success ? "text-green-400" : "text-red-400"}`}>
+                    <span className={`text-xs md:text-sm ${testResult.success ? "text-green-400" : "text-red-400"}`}>
                       {testResult.success ? "✓ Connected" : testResult.message || "Failed"}
                     </span>
                   )}
                   <button
                     onClick={() => handleTestIndexer(indexer.id)}
                     disabled={testing === indexer.id}
-                    className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm text-zinc-400 hover:text-white transition-colors"
                   >
                     {testing === indexer.id ? "Testing..." : "Test"}
                   </button>
                   <button
                     onClick={() => setEditingIndexer(indexer)}
-                    className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm text-zinc-400 hover:text-white transition-colors"
                   >
                     Edit
                   </button>
                   <button
                     onClick={() => handleDeleteIndexer(indexer.id)}
-                    className="text-red-400 hover:text-red-300 text-sm"
+                    className="text-red-400 hover:text-red-300 text-xs md:text-sm"
                   >
                     Delete
                   </button>
@@ -310,8 +318,8 @@ export default function IndexersPage() {
 
       {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-6 w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-4 md:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-medium mb-4">Add Indexer</h3>
             <form onSubmit={handleAddIndexer} className="space-y-4">
               <div>

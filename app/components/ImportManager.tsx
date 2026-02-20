@@ -171,12 +171,12 @@ export function ImportManager() {
           />
 
           {/* Modal Content */}
-          <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col mx-4">
+          <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] sm:max-h-[80vh] flex flex-col mx-2 sm:mx-4">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+            <div className="flex items-center justify-between p-3 sm:p-4 border-b border-zinc-700">
               <div>
-                <h2 className="text-lg font-semibold text-white">Import from Downloads</h2>
-                <p className="text-sm text-zinc-400">
+                <h2 className="text-base sm:text-lg font-semibold text-white">Import from Downloads</h2>
+                <p className="text-xs sm:text-sm text-zinc-400 hidden sm:block">
                   Scan your downloads folder and import files to your library
                 </p>
               </div>
@@ -191,7 +191,7 @@ export function ImportManager() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4">
               {/* Error */}
               {error && (
                 <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
@@ -228,7 +228,7 @@ export function ImportManager() {
 
               {/* Loading State */}
               {isScanning && (
-                <div className="flex flex-col items-center justify-center py-12 text-zinc-400">
+                <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-zinc-400">
                   <svg
                     className="w-8 h-8 animate-spin mb-3"
                     fill="none"
@@ -379,7 +379,7 @@ export function ImportManager() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between p-4 border-t border-zinc-700 bg-zinc-900/50">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 sm:p-4 border-t border-zinc-700 bg-zinc-900/50">
               <button
                 onClick={scanDownloads}
                 disabled={isScanning || isImporting}
@@ -388,21 +388,21 @@ export function ImportManager() {
                 {isScanning ? "Scanning..." : "Rescan"}
               </button>
 
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3">
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white transition-colors"
+                  className="flex-1 sm:flex-initial px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={importSelected}
                   disabled={isImporting || isScanning || selectedSeries.size === 0}
-                  className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 sm:flex-initial px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isImporting
                     ? "Importing..."
-                    : `Import ${selectedSeries.size} Series`}
+                    : `Import ${selectedSeries.size}`}
                 </button>
               </div>
             </div>

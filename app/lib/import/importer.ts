@@ -5,6 +5,7 @@ import { rename, mkdir, copyFile, unlink, access, constants } from 'fs/promises'
 import path from 'path';
 import prisma from '@/app/lib/db';
 import { ScannedFile, groupBySeries } from './scanner';
+import { ComicInfo, isManga } from './comic-info';
 import { 
   getNamingConfig, 
   formatSeriesFolderName as formatSeriesFolder, 
@@ -12,10 +13,11 @@ import {
   NamingConfig,
   NamingTokens 
 } from '@/app/lib/naming';
+import { resolveToDb, resolveToLocal } from '@/app/lib/path-mapping';
 
 export interface ImportOptions {
-  /** Root folder path where files will be imported */
-  rootFolderPath: string;
+  /** Root folder path where files will be imported (optional - will auto-select based on media type) */
+  rootFolderPath?: string;
   /** Whether to copy files (true) or move them (false) */
   copyMode?: boolean;
   /** Series ID to import files to (if known) */
@@ -24,6 +26,8 @@ export interface ImportOptions {
   qualityProfileId?: number;
   /** Whether to delete source files after successful import */
   deleteSource?: boolean;
+  /** Whether to require matching an existing volume (skip files that don't match) */
+  requireVolumeMatch?: boolean;
 }
 
 export interface ImportResult {
@@ -59,6 +63,61 @@ function getFileFormat(extension: string): string {
 }
 
 /**
+ * Determine media type from ComicInfo metadata
+ * Returns 'MANGA' if manga flag is set, otherwise 'COMIC'
+ */
+function determineMediaType(files: ScannedFile[]): 'MANGA' | 'COMIC' {
+  // Check if any file has manga flag set in ComicInfo
+  for (const file of files) {
+    if (file.comicInfo && isManga(file.comicInfo)) {
+      return 'MANGA';
+    }
+  }
+  
+  // Default to COMIC if no manga indicator found
+  // (In practice, most downloads without ComicInfo are western comics)
+  return 'COMIC';
+}
+
+/**
+ * Select the appropriate root folder based on media type
+ */
+async function selectRootFolder(
+  mediaType: 'MANGA' | 'COMIC',
+  explicitRootPath?: string
+): Promise<{ path: string; localPath: string } | null> {
+  // If explicit path provided, use it
+  if (explicitRootPath) {
+    return {
+      path: explicitRootPath,
+      localPath: resolveToLocal(explicitRootPath),
+    };
+  }
+  
+  // Try to find a root folder matching the media type
+  let rootFolder = await prisma.rootFolder.findFirst({
+    where: { mediaType },
+    orderBy: { id: 'asc' },
+  });
+  
+  // Fall back to any root folder if no matching type found
+  if (!rootFolder) {
+    rootFolder = await prisma.rootFolder.findFirst({
+      orderBy: { id: 'asc' },
+    });
+  }
+  
+  if (!rootFolder) {
+    return null;
+  }
+  
+  return {
+    path: rootFolder.path,
+    localPath: resolveToLocal(rootFolder.path),
+  };
+}
+
+/**
  * Find or create a series from the parsed filename
  */
 async function findOrCreateSeries(
@@ -86,6 +145,10 @@ async function findOrCreateSeries(
   const seriesFolderName = formatSeriesFolder(tokens, namingConfig);
   const seriesPath = path.join(rootFolderPath, seriesFolderName);
   
+  // Convert paths to DB format for storage (e.g., /srv/media/comics -> /data/comics)
+  const dbSeriesPath = resolveToDb(seriesPath);
+  const dbRootFolderPath = resolveToDb(rootFolderPath);
+  
   const newSeries = await prisma.series.create({
     data: {
       title: seriesTitle,
@@ -95,8 +158,8 @@ async function findOrCreateSeries(
       status: 'CONTINUING',
       monitored: true,
       monitorStatus: 'ALL',
-      path: seriesPath,
-      rootFolderPath,
+      path: dbSeriesPath,
+      rootFolderPath: dbRootFolderPath,
       qualityProfileId,
     },
   });
@@ -105,9 +168,10 @@ async function findOrCreateSeries(
 }
 
 /**
- * Find or create a volume for a series
+ * Find an existing volume for a series (does NOT create new volumes)
+ * Volumes should come from the metadata provider, not from imports
  */
-async function findOrCreateVolume(
+async function findExistingVolume(
   seriesId: number,
   volumeNumber: number | undefined
 ): Promise<number | undefined> {
@@ -126,16 +190,53 @@ async function findOrCreateVolume(
     return existingVolume.id;
   }
   
-  const newVolume = await prisma.volume.create({
-    data: {
-      seriesId,
-      volumeNumber,
-      title: `Volume ${volumeNumber}`,
-      monitored: true,
-    },
-  });
+  // Volume doesn't exist - don't create it, just log and return undefined
+  console.warn(`Volume ${volumeNumber} not found for series ${seriesId}. Import will proceed without volume assignment.`);
+  return undefined;
+}
+
+/**
+ * Verify that ComicInfo series title matches the target series
+ * Returns a confidence score (0-1) for the match
+ */
+function verifySeriesMatch(
+  comicInfo: ComicInfo | undefined,
+  seriesTitle: string
+): { matches: boolean; confidence: number; reason?: string } {
+  if (!comicInfo?.series) {
+    return { matches: true, confidence: 0.5, reason: 'No ComicInfo series to verify against' };
+  }
   
-  return newVolume.id;
+  const ciTitle = comicInfo.series.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const targetTitle = seriesTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
+  
+  // Exact match
+  if (ciTitle === targetTitle) {
+    return { matches: true, confidence: 1.0 };
+  }
+  
+  // Check if one contains the other (partial match)
+  if (ciTitle.includes(targetTitle) || targetTitle.includes(ciTitle)) {
+    return { matches: true, confidence: 0.8, reason: 'Partial series title match' };
+  }
+  
+  // Check for common variations (e.g., "Jojo's Bizarre Adventure" vs "Jojo no Kimyou na Bouken")
+  // For now, just use the clean titles comparison
+  if (ciTitle.length > 3 && targetTitle.length > 3) {
+    // Simple similarity check - if first 4+ characters match
+    const minLen = Math.min(ciTitle.length, targetTitle.length, 10);
+    const prefix1 = ciTitle.substring(0, minLen);
+    const prefix2 = targetTitle.substring(0, minLen);
+    if (prefix1 === prefix2) {
+      return { matches: true, confidence: 0.7, reason: 'Series title prefix match' };
+    }
+  }
+  
+  return { 
+    matches: false, 
+    confidence: 0.0, 
+    reason: `ComicInfo series "${comicInfo.series}" does not match target "${seriesTitle}"` 
+  };
 }
 
 /**
@@ -159,8 +260,8 @@ async function importFile(
   seriesId: number,
   namingConfig: NamingConfig
 ): Promise<ImportedFile> {
-  const { rootFolderPath, copyMode = false, deleteSource = true } = options;
-  const { parsed, format, size } = file;
+  const { rootFolderPath, copyMode = false, deleteSource = true, requireVolumeMatch = false } = options;
+  const { parsed, format, size, comicInfo } = file;
   
   // Get the series info for folder structure
   const series = await prisma.series.findUnique({
@@ -169,6 +270,23 @@ async function importFile(
   
   if (!series) {
     throw new Error(`Series ${seriesId} not found`);
+  }
+  
+  // Verify series match using ComicInfo if available
+  const seriesMatch = verifySeriesMatch(comicInfo, series.title);
+  if (!seriesMatch.matches) {
+    throw new Error(`Series mismatch: ${seriesMatch.reason}`);
+  }
+  if (seriesMatch.confidence < 0.7) {
+    console.warn(`Low confidence series match (${seriesMatch.confidence}) for ${file.filename}: ${seriesMatch.reason}`);
+  }
+  
+  // Find existing volume (don't create new ones - volumes come from metadata provider)
+  const volumeId = await findExistingVolume(seriesId, parsed.volumeNumber);
+  
+  // If volume matching is required and no volume was found, skip this file
+  if (requireVolumeMatch && parsed.volumeNumber !== undefined && !volumeId) {
+    throw new Error(`Volume ${parsed.volumeNumber} not found for series "${series.title}". Skipping import as requireVolumeMatch is enabled.`);
   }
   
   // Create series folder if it doesn't exist using naming config
@@ -234,14 +352,15 @@ async function importFile(
     }
   }
   
-  // Find or create volume
-  const volumeId = await findOrCreateVolume(seriesId, parsed.volumeNumber);
+  // Convert paths to DB format for storage
+  const dbSeriesFolderPath = resolveToDb(seriesFolderPath);
+  const dbNewPath = resolveToDb(newPath);
   
   // Update series path if not set
   if (!series.path) {
     await prisma.series.update({
       where: { id: seriesId },
-      data: { path: seriesFolderPath },
+      data: { path: dbSeriesFolderPath },
     });
   }
   
@@ -250,7 +369,7 @@ async function importFile(
     data: {
       seriesId,
       volumeId,
-      path: newPath,
+      path: dbNewPath,
       relativePath: newFilename,
       size: BigInt(size),
       format: getFileFormat(format) as any,
@@ -269,7 +388,7 @@ async function importFile(
       eventType: 'DOWNLOAD_FOLDER_IMPORTED',
       data: JSON.stringify({
         sourcePath: file.path,
-        destinationPath: newPath,
+        destinationPath: dbNewPath,
         size,
         format,
       }),
@@ -278,7 +397,7 @@ async function importFile(
   
   return {
     originalPath: file.path,
-    newPath,
+    newPath: dbNewPath,
     seriesId,
     volumeId,
     mediaFileId: mediaFile.id,
@@ -310,10 +429,28 @@ export async function importFiles(
     const seriesTitle = seriesFiles[0].parsed.seriesTitle;
     
     try {
+      // Determine media type based on ComicInfo from files in this series
+      const mediaType = determineMediaType(seriesFiles);
+      
+      // Select appropriate root folder for this media type
+      const rootFolder = await selectRootFolder(mediaType, options.rootFolderPath);
+      
+      if (!rootFolder) {
+        result.errors.push(`No root folder configured for "${seriesTitle}". Please add a root folder.`);
+        result.failed += seriesFiles.length;
+        continue;
+      }
+      
+      // Create options with the selected root folder
+      const seriesOptions: ImportOptions = {
+        ...options,
+        rootFolderPath: rootFolder.localPath,
+      };
+      
       // Find or create series
       const seriesId = options.seriesId ?? await findOrCreateSeries(
         seriesTitle,
-        options.rootFolderPath,
+        rootFolder.localPath,
         namingConfig,
         options.qualityProfileId
       );
@@ -328,7 +465,7 @@ export async function importFiles(
             continue;
           }
           
-          const importedFile = await importFile(file, options, seriesId, namingConfig);
+          const importedFile = await importFile(file, seriesOptions, seriesId, namingConfig);
           result.importedFiles.push(importedFile);
           result.imported++;
         } catch (error) {

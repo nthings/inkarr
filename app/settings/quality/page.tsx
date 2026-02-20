@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/app/components/AlertDialog";
 
 interface QualityProfile {
   id: number;
@@ -19,6 +20,7 @@ const defaultQualities = [
 ];
 
 export default function QualityPage() {
+  const { showConfirm } = useAlert();
   const [profiles, setProfiles] = useState<QualityProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -70,7 +72,13 @@ export default function QualityPage() {
   };
 
   const handleDeleteProfile = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this quality profile?")) return;
+    const confirmed = await showConfirm({
+      title: "Delete Profile",
+      message: "Are you sure you want to delete this quality profile?",
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) return;
     try {
       await fetch(`/api/v1/qualityprofile/${id}`, { method: "DELETE" });
       fetchProfiles();
@@ -141,15 +149,15 @@ export default function QualityPage() {
             {profiles.map((profile) => (
               <div
                 key={profile.id}
-                className="flex items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors gap-2 sm:gap-4"
               >
-                <div>
-                  <div className="font-medium">{profile.name}</div>
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{profile.name}</div>
                   <div className="text-sm text-zinc-400">
                     Cutoff: {profile.cutoff} • {profile.items.filter((i) => i.allowed).length} formats allowed
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-shrink-0">
                   <button
                     onClick={() => setEditingProfile(profile)}
                     className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
@@ -171,8 +179,8 @@ export default function QualityPage() {
 
       {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-4 sm:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto">
             <h3 className="text-lg font-medium mb-4">Add Quality Profile</h3>
             <form onSubmit={handleAddProfile} className="space-y-4">
               <div>

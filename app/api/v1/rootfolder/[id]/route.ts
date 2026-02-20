@@ -6,6 +6,80 @@ import prisma from '@/app/lib/db';
 /**
  * @swagger
  * /api/v1/rootfolder/{id}:
+ *   put:
+ *     summary: Update a root folder
+ *     tags: [Config]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               mediaType: { type: string, enum: [COMIC, MANGA, MANHWA, MANHUA, WEBTOON] }
+ *     responses:
+ *       200:
+ *         description: Updated root folder
+ *       404:
+ *         description: Root folder not found
+ */
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const rootFolderId = parseInt(id, 10);
+    const body = await request.json();
+    
+    if (isNaN(rootFolderId)) {
+      return NextResponse.json(
+        { error: 'Invalid ID' },
+        { status: 400 }
+      );
+    }
+    
+    // Check if root folder exists
+    const existing = await prisma.rootFolder.findUnique({
+      where: { id: rootFolderId },
+    });
+    
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'Root folder not found' },
+        { status: 404 }
+      );
+    }
+    
+    const { name, mediaType } = body;
+    
+    const updated = await prisma.rootFolder.update({
+      where: { id: rootFolderId },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(mediaType !== undefined && { mediaType: mediaType as any }),
+      },
+    });
+    
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error('Error updating root folder:', error);
+    return NextResponse.json(
+      { error: 'Failed to update root folder' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * @swagger
+ * /api/v1/rootfolder/{id}:
  *   delete:
  *     summary: Delete a root folder
  *     description: Removes the root folder from the database. Does NOT delete the actual folder from the filesystem.

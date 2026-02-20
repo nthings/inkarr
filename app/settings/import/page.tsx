@@ -48,6 +48,16 @@ export default function ImportPage() {
   const [importResult, setImportResult] = useState<ImportResponse | null>(null);
   const [selectedSeries, setSelectedSeries] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  
+  // Downloads folder configuration
+  const [downloadsFolder, setDownloadsFolder] = useState<string>("");
+  const [downloadsCategory, setDownloadsCategory] = useState<string>("");
+  const [downloadClientCategory, setDownloadClientCategory] = useState<string>("inkarr");
+  const [filterByDownloadClient, setFilterByDownloadClient] = useState<boolean>(true);
+  const [requireVolumeMatch, setRequireVolumeMatch] = useState<boolean>(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -57,6 +67,57 @@ export default function ImportPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
+  // Load downloads folder config on mount
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const res = await fetch("/api/v1/config");
+        if (res.ok) {
+          const config = await res.json();
+          setDownloadsFolder(config.DownloadsFolder || "/data/downloads");
+          setDownloadsCategory(config.DownloadsCategory || "");
+          setDownloadClientCategory(config.DownloadClientCategory || "inkarr");
+          setFilterByDownloadClient(config.FilterByDownloadClient !== "false");
+          setRequireVolumeMatch(config.RequireVolumeMatch !== "false");
+        }
+      } catch (err) {
+        console.error("Failed to load config:", err);
+        setDownloadsFolder("/data/downloads");
+      } finally {
+        setSettingsLoaded(true);
+      }
+    };
+    loadConfig();
+  }, []);
+
+  const saveDownloadsFolder = async () => {
+    setSavingSettings(true);
+    setError(null);
+    setSettingsSaved(false);
+    try {
+      const res = await fetch("/api/v1/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          DownloadsFolder: downloadsFolder,
+          DownloadsCategory: downloadsCategory,
+          DownloadClientCategory: downloadClientCategory,
+          FilterByDownloadClient: filterByDownloadClient ? "true" : "false",
+          RequireVolumeMatch: requireVolumeMatch ? "true" : "false",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save settings");
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+      // Re-scan with new folder
+      scanDownloads();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save settings");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const scanDownloads = useCallback(async () => {
     setIsScanning(true);
     setError(null);
@@ -64,7 +125,8 @@ export default function ImportPage() {
     setImportResult(null);
 
     try {
-      const res = await fetch("/api/v1/import/scan");
+      // Don't pass path param - let API use config values (including category)
+      const res = await fetch(`/api/v1/import/scan`);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to scan downloads");
@@ -139,10 +201,12 @@ export default function ImportPage() {
     setSelectedSeries(new Set());
   };
 
-  // Auto-scan on page load
+  // Auto-scan once settings are loaded
   useEffect(() => {
-    scanDownloads();
-  }, [scanDownloads]);
+    if (settingsLoaded) {
+      scanDownloads();
+    }
+  }, [settingsLoaded, scanDownloads]);
 
   return (
     <div>
@@ -151,6 +215,106 @@ export default function ImportPage() {
         <p className="text-zinc-400 mt-1">
           Scan your downloads folder and import files to your library
         </p>
+      </div>
+
+      {/* Downloads Folder Configuration */}
+      <div className="mb-6 p-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
+        <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wide mb-3">Downloads Location</h2>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">Downloads Folder</label>
+            <input
+              type="text"
+              value={downloadsFolder}
+              onChange={(e) => setDownloadsFolder(e.target.value)}
+              placeholder="/path/to/downloads"
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">
+              Category (subfolder)
+              <span className="text-zinc-500 ml-1">- optional</span>
+            </label>
+            <input
+              type="text"
+              value={downloadsCategory}
+              onChange={(e) => setDownloadsCategory(e.target.value)}
+              placeholder="e.g., inkarr"
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+            />
+            <p className="mt-1 text-xs text-zinc-500">
+              Only scan files in this subfolder (e.g., &quot;inkarr&quot; scans {downloadsFolder}/inkarr)
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">
+              Download Client Category
+            </label>
+            <input
+              type="text"
+              value={downloadClientCategory}
+              onChange={(e) => setDownloadClientCategory(e.target.value)}
+              placeholder="inkarr"
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+            />
+            <p className="mt-1 text-xs text-zinc-500">
+              Only import files from downloads with this category/tag (filters by qBittorrent/SABnzbd category)
+            </p>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <label className="block text-sm text-zinc-300">Filter by Download Client</label>
+              <p className="text-xs text-zinc-500">
+                Only import files from downloads tagged with the above category
+              </p>
+            </div>
+            <button
+              onClick={() => setFilterByDownloadClient(!filterByDownloadClient)}
+              className={`w-10 h-6 rounded-full transition-colors ${
+                filterByDownloadClient ? "bg-green-600" : "bg-zinc-700"
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  filterByDownloadClient ? "translate-x-5" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <label className="block text-sm text-zinc-300">Require Volume Match</label>
+              <p className="text-xs text-zinc-500">
+                Only import files that match existing volumes from metadata provider
+              </p>
+            </div>
+            <button
+              onClick={() => setRequireVolumeMatch(!requireVolumeMatch)}
+              className={`w-10 h-6 rounded-full transition-colors ${
+                requireVolumeMatch ? "bg-green-600" : "bg-zinc-700"
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  requireVolumeMatch ? "translate-x-5" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={saveDownloadsFolder}
+              disabled={savingSettings}
+              className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {savingSettings ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+        {settingsSaved && (
+          <p className="mt-2 text-sm text-green-400">Settings saved successfully</p>
+        )}
       </div>
 
       {/* Error */}
@@ -243,14 +407,14 @@ export default function ImportPage() {
           ) : (
             <>
               {/* Summary & Actions */}
-              <div className="flex items-center justify-between mb-6 p-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
-                <div className="text-zinc-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 p-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
+                <div className="text-zinc-300 text-sm sm:text-base">
                   Found <span className="font-semibold text-white">{scanResult.totalFiles}</span> file(s) 
                   in <span className="font-semibold text-white">{scanResult.series.length}</span> series 
                   ({formatSize(scanResult.totalSize)})
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex gap-2 text-sm">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+                  <div className="flex justify-center gap-2 text-sm">
                     <button
                       onClick={selectAll}
                       className="text-blue-400 hover:text-blue-300"
@@ -265,22 +429,24 @@ export default function ImportPage() {
                       Select None
                     </button>
                   </div>
-                  <button
-                    onClick={scanDownloads}
-                    disabled={isScanning || isImporting}
-                    className="px-4 py-2 text-sm font-medium text-zinc-300 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    Rescan
-                  </button>
-                  <button
-                    onClick={importSelected}
-                    disabled={isImporting || isScanning || selectedSeries.size === 0}
-                    className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isImporting
-                      ? "Importing..."
-                      : `Import ${selectedSeries.size} Series`}
-                  </button>
+                  <div className="flex gap-2 sm:gap-3">
+                    <button
+                      onClick={scanDownloads}
+                      disabled={isScanning || isImporting}
+                      className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium text-zinc-300 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      Rescan
+                    </button>
+                    <button
+                      onClick={importSelected}
+                      disabled={isImporting || isScanning || selectedSeries.size === 0}
+                      className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isImporting
+                        ? "Importing..."
+                        : `Import ${selectedSeries.size} Series`}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -289,17 +455,17 @@ export default function ImportPage() {
                 {scanResult.series.map((series) => (
                   <div
                     key={series.cleanTitle}
-                    className={`p-4 rounded-lg border transition-colors cursor-pointer ${
+                    className={`p-3 sm:p-4 rounded-lg border transition-colors cursor-pointer ${
                       selectedSeries.has(series.cleanTitle)
                         ? "bg-blue-900/20 border-blue-700"
                         : "bg-zinc-800/50 border-zinc-700 hover:border-zinc-600"
                     }`}
                     onClick={() => toggleSeries(series.cleanTitle)}
                   >
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-3 sm:gap-4">
                       {/* Checkbox */}
                       <div
-                        className={`w-6 h-6 rounded border-2 flex items-center justify-center mt-0.5 ${
+                        className={`w-5 h-5 sm:w-6 sm:h-6 rounded border-2 flex items-center justify-center mt-0.5 flex-shrink-0 ${
                           selectedSeries.has(series.cleanTitle)
                             ? "bg-blue-600 border-blue-600"
                             : "border-zinc-600"
@@ -307,7 +473,7 @@ export default function ImportPage() {
                       >
                         {selectedSeries.has(series.cleanTitle) && (
                           <svg
-                            className="w-4 h-4 text-white"
+                            className="w-3 h-3 sm:w-4 sm:h-4 text-white"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -320,8 +486,8 @@ export default function ImportPage() {
 
                       {/* Series Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-lg font-medium text-white truncate">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                          <h3 className="text-base sm:text-lg font-medium text-white">
                             {series.seriesTitle}
                           </h3>
                           {series.existingSeriesId && (
@@ -330,7 +496,7 @@ export default function ImportPage() {
                             </span>
                           )}
                         </div>
-                        <div className="flex gap-6 mt-1 text-sm text-zinc-400">
+                        <div className="flex flex-wrap gap-3 sm:gap-6 mt-1 text-xs sm:text-sm text-zinc-400">
                           <span>{series.files.length} file(s)</span>
                           <span>{series.volumeCount} volume(s)</span>
                           <span>{formatSize(series.totalSize)}</span>

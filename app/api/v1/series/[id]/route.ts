@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
 import { serializeBigInt } from '@/app/lib/utils/serialize';
+import fs from 'fs/promises';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -187,15 +188,40 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const searchParams = request.nextUrl.searchParams;
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
 
-    if (deleteFiles) {
-      // TODO: Delete actual files from disk
+    // Get the series to find its path
+    const series = await prisma.series.findUnique({
+      where: { id: seriesId },
+      select: { path: true, title: true },
+    });
+
+    if (!series) {
+      return NextResponse.json(
+        { error: 'Series not found' },
+        { status: 404 }
+      );
+    }
+
+    // Delete files from disk if requested
+    if (deleteFiles && series.path) {
+      try {
+        // Check if the path exists before attempting deletion
+        const stats = await fs.stat(series.path).catch(() => null);
+        if (stats && stats.isDirectory()) {
+          // Recursively delete the series folder
+          await fs.rm(series.path, { recursive: true, force: true });
+          console.log(`Deleted series folder: ${series.path}`);
+        }
+      } catch (fileError) {
+        console.error(`Failed to delete files for series ${series.title}:`, fileError);
+        // Continue with database deletion even if file deletion fails
+      }
     }
 
     await prisma.series.delete({
       where: { id: seriesId },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, filesDeleted: deleteFiles && !!series.path });
   } catch (error) {
     console.error('Error deleting series:', error);
     return NextResponse.json(

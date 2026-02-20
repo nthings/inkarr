@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { DownloadProtocol } from "@/app/lib/types";
+import { useAlert } from "./AlertDialog";
 
 interface ReleaseInfo {
   guid: string;
@@ -38,6 +39,7 @@ export function SearchModal({
   volumeId,
   chapterId,
 }: SearchModalProps) {
+  const { showAlert } = useAlert();
   const [releases, setReleases] = useState<ReleaseInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +107,7 @@ export function SearchModal({
       // Mark as grabbed
       setReleases(prev => prev.filter(r => r.guid !== release.guid));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to grab release");
+      showAlert({ message: err instanceof Error ? err.message : "Failed to grab release", type: "error" });
     } finally {
       setGrabbing(null);
     }
@@ -155,18 +157,18 @@ export function SearchModal({
       />
       
       {/* Modal */}
-      <div className="flex min-h-full items-start justify-center p-4 pt-16">
+      <div className="flex min-h-full items-start justify-center p-2 sm:p-4 pt-8 sm:pt-16">
         <div className="relative w-full max-w-6xl bg-zinc-900 rounded-lg shadow-2xl border border-zinc-800">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-            <h2 className="text-lg font-medium">
-              Interactive Search - {seriesTitle}
-              {volumeId && <span className="text-zinc-400"> (Volume)</span>}
-              {chapterId && <span className="text-zinc-400"> (Chapter)</span>}
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-zinc-800">
+            <h2 className="text-base sm:text-lg font-medium truncate pr-4">
+              Search - {seriesTitle}
+              {volumeId && <span className="text-zinc-400 hidden sm:inline"> (Volume)</span>}
+              {chapterId && <span className="text-zinc-400 hidden sm:inline"> (Chapter)</span>}
             </h2>
             <button
               onClick={onClose}
-              className="text-zinc-400 hover:text-white transition-colors"
+              className="text-zinc-400 hover:text-white transition-colors flex-shrink-0"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -175,67 +177,73 @@ export function SearchModal({
           </div>
           
           {/* Search Bar */}
-          <div className="px-6 py-4 border-b border-zinc-800">
-            <div className="flex gap-3">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-zinc-800">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && search(searchTerm)}
                 placeholder="Search for releases..."
-                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 sm:px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 text-sm"
               />
-              <button
-                onClick={() => search(searchTerm)}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 rounded-lg font-medium transition-colors"
-              >
-                {loading ? "Searching..." : "Search"}
-              </button>
-              <button
-                onClick={() => search()}
-                disabled={loading}
-                className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 rounded-lg font-medium transition-colors"
-                title="Search by series title"
-              >
-                Auto
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => search(searchTerm)}
+                  disabled={loading}
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 rounded-lg font-medium transition-colors text-sm"
+                >
+                  {loading ? "..." : "Search"}
+                </button>
+                <button
+                  onClick={() => search()}
+                  disabled={loading}
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 rounded-lg font-medium transition-colors text-sm"
+                  title="Search by series title"
+                >
+                  Auto
+                </button>
+              </div>
             </div>
             
             {/* Sort & Filter Options */}
-            <div className="flex items-center gap-4 mt-3">
-              <span className="text-sm text-zinc-400">Sort by:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="bg-zinc-800 border border-zinc-700 rounded px-3 py-1 text-sm focus:outline-none focus:border-blue-500"
-              >
-                <option value="seeders">Seeders</option>
-                <option value="size">Size</option>
-                <option value="date">Date</option>
-              </select>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm text-zinc-400">Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                  className="bg-zinc-800 border border-zinc-700 rounded px-2 sm:px-3 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="seeders">Seeders</option>
+                  <option value="size">Size</option>
+                  <option value="date">Date</option>
+                </select>
+              </div>
               
-              <span className="text-sm text-zinc-400 ml-4">Protocol:</span>
-              <select
-                value={protocolFilter}
-                onChange={(e) => setProtocolFilter(e.target.value as typeof protocolFilter)}
-                className="bg-zinc-800 border border-zinc-700 rounded px-3 py-1 text-sm focus:outline-none focus:border-blue-500"
-              >
-                <option value="all">All</option>
-                <option value="TORRENT">Torrent</option>
-                <option value="USENET">Usenet</option>
-              </select>
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm text-zinc-400">Protocol:</span>
+                <select
+                  value={protocolFilter}
+                  onChange={(e) => setProtocolFilter(e.target.value as typeof protocolFilter)}
+                  className="bg-zinc-800 border border-zinc-700 rounded px-2 sm:px-3 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="all">All</option>
+                  <option value="TORRENT">Torrent</option>
+                  <option value="USENET">Usenet</option>
+                </select>
+              </div>
               
-              <span className="text-sm text-zinc-500 ml-auto">
-                {filteredReleases.length} of {releases.length} release{releases.length !== 1 ? "s" : ""}
+              <span className="text-xs sm:text-sm text-zinc-500 ml-auto">
+                {filteredReleases.length}/{releases.length}
               </span>
             </div>
           </div>
           
           {/* Results */}
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[50vh] sm:max-h-[60vh] overflow-y-auto">
             {error && (
-              <div className="px-6 py-4 text-red-400 bg-red-900/20">
+              <div className="px-4 sm:px-6 py-4 text-red-400 bg-red-900/20 text-sm">
                 {error}
               </div>
             )}
@@ -247,13 +255,71 @@ export function SearchModal({
             )}
             
             {!loading && releases.length === 0 && !error && (
-              <div className="py-12 text-center text-zinc-400">
+              <div className="py-12 text-center text-zinc-400 text-sm">
                 No releases found. Try a different search term.
               </div>
             )}
             
             {sortedReleases.length > 0 && (
-              <table className="w-full">
+              <>
+                {/* Mobile Card View */}
+                <div className="md:hidden divide-y divide-zinc-800">
+                  {sortedReleases.map((release) => (
+                    <div key={release.guid} className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-zinc-100 break-words">
+                            {release.title}
+                          </p>
+                          <p className="text-xs text-zinc-400 mt-1">
+                            {release.indexer} • {formatAge(release.publishDate)}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleGrab(release)}
+                          disabled={grabbing === release.guid}
+                          className="p-2 bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50 flex-shrink-0"
+                          title="Grab release"
+                        >
+                          {grabbing === release.guid ? (
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className={`px-2 py-0.5 rounded font-medium ${
+                          release.protocol === "USENET" 
+                            ? "bg-purple-600 text-white" 
+                            : "bg-orange-600 text-white"
+                        }`}>
+                          {release.protocol === "USENET" ? "nzb" : "torrent"}
+                        </span>
+                        <span className="text-zinc-300">{formatSize(release.size)}</span>
+                        {release.seeders !== undefined && (
+                          <span className={`px-2 py-0.5 rounded font-medium ${
+                            release.seeders > 10 ? "bg-green-600 text-white" :
+                            release.seeders > 0 ? "bg-yellow-600 text-white" :
+                            "bg-red-600 text-white"
+                          }`}>
+                            {release.seeders}/{release.leechers || 0}
+                          </span>
+                        )}
+                        {release.quality && (
+                          <span className="px-2 py-0.5 rounded bg-zinc-700 text-zinc-200">
+                            {release.quality}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View */}
+                <table className="w-full hidden md:table">
                 <thead className="bg-zinc-800/50 sticky top-0">
                   <tr className="text-left text-sm text-zinc-400">
                     <th className="px-4 py-3 font-medium w-16">Source</th>
@@ -346,14 +412,15 @@ export function SearchModal({
                   ))}
                 </tbody>
               </table>
+              </>
             )}
           </div>
           
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-zinc-800 flex justify-end">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-zinc-800 flex justify-end">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-medium transition-colors"
+              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-medium transition-colors text-sm"
             >
               Close
             </button>

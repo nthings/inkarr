@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAlert } from "@/app/components/AlertDialog";
 
 interface GeneralSettings {
   apiKey: string;
@@ -16,6 +17,7 @@ interface User {
 }
 
 export default function GeneralSettingsPage() {
+  const { showConfirm } = useAlert();
   const [settings, setSettings] = useState<GeneralSettings>({
     apiKey: "",
     authenticationMethod: "none",
@@ -134,7 +136,13 @@ export default function GeneralSettingsPage() {
   };
 
   const handleDeleteUser = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this user?")) return;
+    const confirmed = await showConfirm({
+      title: "Delete User",
+      message: "Are you sure you want to delete this user?",
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) return;
     
     try {
       const response = await fetch(`/api/v1/users/${id}`, { method: "DELETE" });
@@ -200,25 +208,27 @@ export default function GeneralSettingsPage() {
           
           <div>
             <label className="block text-sm text-zinc-400 mb-1">API Key</label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={settings.apiKey}
                 readOnly
-                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white font-mono text-sm"
+                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white font-mono text-sm overflow-hidden text-ellipsis"
               />
-              <button
-                onClick={handleRegenerateApiKey}
-                className="px-3 py-2 text-sm bg-zinc-700 rounded-lg hover:bg-zinc-600 transition-colors"
-              >
-                Regenerate
-              </button>
-              <button
-                onClick={copyApiKey}
-                className="px-3 py-2 text-sm bg-zinc-700 rounded-lg hover:bg-zinc-600 transition-colors"
-              >
-                Copy
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRegenerateApiKey}
+                  className="flex-1 sm:flex-none px-3 py-2 text-sm bg-zinc-700 rounded-lg hover:bg-zinc-600 transition-colors"
+                >
+                  Regenerate
+                </button>
+                <button
+                  onClick={copyApiKey}
+                  className="flex-1 sm:flex-none px-3 py-2 text-sm bg-zinc-700 rounded-lg hover:bg-zinc-600 transition-colors"
+                >
+                  Copy
+                </button>
+              </div>
             </div>
             <p className="text-xs text-zinc-500 mt-1">
               Use this key in the X-Api-Key header to authenticate API requests
@@ -247,15 +257,15 @@ export default function GeneralSettingsPage() {
           ) : (
             <div className="divide-y divide-zinc-800">
               {users.map((user) => (
-                <div key={user.id} className="flex items-center justify-between p-4 hover:bg-zinc-800/50">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center">
-                      <span className="text-sm font-medium text-white">
+                <div key={user.id} className="flex items-center justify-between p-3 sm:p-4 hover:bg-zinc-800/50">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-zinc-700 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs sm:text-sm font-medium text-white">
                         {user.username.charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <div>
-                      <div className="font-medium">{user.username}</div>
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{user.username}</div>
                       <div className="text-sm text-zinc-400">
                         {user.isAdmin ? "Administrator" : "User"}
                       </div>
@@ -263,7 +273,7 @@ export default function GeneralSettingsPage() {
                   </div>
                   <button
                     onClick={() => handleDeleteUser(user.id)}
-                    className="text-zinc-400 hover:text-red-400 transition-colors"
+                    className="text-zinc-400 hover:text-red-400 transition-colors flex-shrink-0 ml-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -308,8 +318,8 @@ export default function GeneralSettingsPage() {
 
       {/* Add User Modal */}
       {showAddUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-700 p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-lg font-medium mb-4">Add User</h3>
             <form onSubmit={handleAddUser} className="space-y-4">
               <div>

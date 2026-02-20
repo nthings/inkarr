@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
+import { resolveToLocal } from '@/app/lib/path-mapping';
 
 // Available command types
 type CommandType = 
@@ -51,8 +52,21 @@ interface CommandRequest {
 async function executeScanDownloads(body?: Record<string, unknown>) {
   const { scanDirectory, groupBySeries } = await import('@/app/lib/import');
   
-  const downloadPath = (body?.downloadPath as string) || process.env.DOWNLOADS_FOLDER || './data/downloads';
-  const files = await scanDirectory(downloadPath);
+  let downloadPath = (body?.downloadPath as string) || process.env.DOWNLOADS_FOLDER || '/data/downloads';
+  
+  // Check for category subfolder if no explicit path provided
+  if (!body?.downloadPath) {
+    const categoryConfig = await prisma.config.findUnique({
+      where: { key: 'DownloadsCategory' },
+    });
+    const category = categoryConfig?.value;
+    if (category) {
+      downloadPath = `${downloadPath}/${category}`;
+    }
+  }
+  
+  const localPath = resolveToLocal(downloadPath);
+  const files = await scanDirectory(localPath);
   const groups = groupBySeries(files);
   
   return {
@@ -73,7 +87,18 @@ async function executeImportDownloads(body?: Record<string, unknown>) {
   const { scanDirectory, importFiles } = await import('@/app/lib/import');
   type ImportOptions = Parameters<typeof importFiles>[1];
   
-  const downloadPath = (body?.downloadPath as string) || process.env.DOWNLOADS_FOLDER || './data/downloads';
+  let downloadPath = (body?.downloadPath as string) || process.env.DOWNLOADS_FOLDER || '/data/downloads';
+  
+  // Check for category subfolder if no explicit path provided
+  if (!body?.downloadPath) {
+    const categoryConfig = await prisma.config.findUnique({
+      where: { key: 'DownloadsCategory' },
+    });
+    const category = categoryConfig?.value;
+    if (category) {
+      downloadPath = `${downloadPath}/${category}`;
+    }
+  }
   
   // Get root folder
   let rootFolderPath = body?.rootFolderPath as string | undefined;
@@ -88,9 +113,13 @@ async function executeImportDownloads(body?: Record<string, unknown>) {
     throw new Error('No root folder configured');
   }
   
-  const files = await scanDirectory(downloadPath);
+  // Resolve paths to local filesystem
+  const localDownloadPath = resolveToLocal(downloadPath);
+  const localRootPath = resolveToLocal(rootFolderPath);
+  
+  const files = await scanDirectory(localDownloadPath);
   const options: ImportOptions = {
-    rootFolderPath,
+    rootFolderPath: localRootPath,
     seriesId: body?.seriesId as number | undefined,
     qualityProfileId: body?.qualityProfileId as number | undefined,
     copyMode: body?.copyMode as boolean | undefined,

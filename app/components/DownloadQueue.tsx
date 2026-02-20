@@ -94,7 +94,7 @@ export function DownloadQueue() {
 
       {/* Dropdown Queue List */}
       {isExpanded && (
-        <div className="absolute right-0 top-full mt-2 w-96 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-96 overflow-hidden">
+        <div className="fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto top-16 sm:top-full sm:mt-2 w-auto sm:w-96 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-[70vh] sm:max-h-96 overflow-hidden">
           <div className="p-3 border-b border-zinc-700">
             <h3 className="font-medium text-zinc-200">Download Queue</h3>
             <p className="text-xs text-zinc-500">
@@ -107,14 +107,14 @@ export function DownloadQueue() {
               No items in queue
             </div>
           ) : (
-            <div className="max-h-72 overflow-y-auto">
+            <div className="max-h-[50vh] sm:max-h-72 overflow-y-auto">
               {queue.map((item) => (
                 <div key={item.id} className="p-3 border-b border-zinc-800 last:border-0">
                   <div className="flex justify-between items-start gap-2 mb-1">
                     <span className="text-sm text-zinc-200 truncate flex-1" title={item.name}>
                       {item.name}
                     </span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                    <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
                       item.status === "downloading" ? "bg-blue-600 text-white" :
                       item.status === "seeding" ? "bg-green-600 text-white" :
                       item.status === "paused" ? "bg-yellow-600 text-white" :
