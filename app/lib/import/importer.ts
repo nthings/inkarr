@@ -260,7 +260,13 @@ async function importFile(
   seriesId: number,
   namingConfig: NamingConfig
 ): Promise<ImportedFile> {
-  const { rootFolderPath, copyMode = false, deleteSource = true, requireVolumeMatch = false } = options;
+  const { rootFolderPath: optionalRootPath, copyMode = false, deleteSource = true, requireVolumeMatch = false } = options;
+  
+  if (!optionalRootPath) {
+    throw new Error('rootFolderPath is required for file import');
+  }
+  const rootFolderPath: string = optionalRootPath;
+  
   const { parsed, format, size, comicInfo } = file;
   
   // Get the series info for folder structure
