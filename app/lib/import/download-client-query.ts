@@ -15,23 +15,10 @@ export interface CompletedDownload {
 }
 
 /**
- * Get the download client category to filter by
- * Defaults to 'inkarr' if not configured
- */
-async function getDownloadClientCategory(): Promise<string> {
-  const config = await prisma.config.findUnique({
-    where: { key: 'DownloadClientCategory' },
-  });
-  return config?.value || 'inkarr';
-}
-
-/**
- * Get all completed downloads from enabled download clients that have the "inkarr" category
+ * Get all completed downloads from enabled download clients that have the configured category
  * Returns a list of content paths that should be eligible for import
  */
 export async function getInkarrDownloads(): Promise<CompletedDownload[]> {
-  const category = await getDownloadClientCategory();
-  
   const clients = await prisma.downloadClient.findMany({
     where: { enable: true },
   });
@@ -44,6 +31,8 @@ export async function getInkarrDownloads(): Promise<CompletedDownload[]> {
 
   for (const client of clients) {
     const settings = JSON.parse(client.settings);
+    // Use the category from download client settings, fall back to 'inkarr'
+    const category = settings.category || 'inkarr';
     
     try {
       const downloads = await fetchCompletedDownloads(client.implementation, settings, category);
@@ -57,7 +46,7 @@ export async function getInkarrDownloads(): Promise<CompletedDownload[]> {
 }
 
 /**
- * Get a Set of content paths from completed "inkarr" downloads
+ * Get a Set of content paths from completed downloads with the configured category
  * These paths can be used to filter files during scanning
  * Paths are converted to local filesystem paths using path mapping
  */
@@ -65,12 +54,17 @@ export async function getInkarrContentPaths(): Promise<Set<string>> {
   const downloads = await getInkarrDownloads();
   const paths = new Set<string>();
   
+  console.log(`[DownloadClientQuery] Found ${downloads.length} completed downloads from client category`);
+  
   for (const download of downloads) {
     // Add the content path (this is the actual file/folder location)
     // Apply path mapping to convert Docker paths to local paths
     if (download.contentPath) {
       const localPath = resolveToLocal(download.contentPath);
       paths.add(localPath);
+      if (downloads.indexOf(download) < 3) {
+        console.log(`[DownloadClientQuery]   ${download.contentPath} -> ${localPath}`);
+      }
     }
     // Also add save_path + name as fallback
     if (download.savePath && download.name) {
@@ -115,6 +109,8 @@ async function fetchCompletedDownloads(
       return fetchQBittorrentCompleted(settings, category);
     case 'SABnzbd':
       return fetchSABnzbdCompleted(settings, category);
+    case 'NZBGet':
+      return fetchNZBGetCompleted(settings, category);
     default:
       console.warn(`Download client ${implementation} not supported for category filtering`);
       return [];
@@ -198,11 +194,13 @@ async function fetchSABnzbdCompleted(
   };
   
   const protocol = useSsl ? 'https' : 'http';
-  const baseUrl = `${protocol}://${host}:${port}${urlBase || ''}`;
+  // urlBase can be empty (API at /api) or a path like /sabnzbd (API at /sabnzbd/api)
+  const normalizedUrlBase = urlBase ? `/${urlBase.replace(/^\/|\/$/g, '')}` : '';
+  const baseUrl = `${protocol}://${host}:${port}${normalizedUrlBase}/api`;
 
   // Fetch history (completed downloads)
   const response = await fetch(
-    `${baseUrl}/api?output=json&apikey=${apiKey}&mode=history&limit=100&cat=${encodeURIComponent(category)}`
+    `${baseUrl}?output=json&apikey=${apiKey}&mode=history&limit=100&cat=${encodeURIComponent(category)}`
   );
 
   if (!response.ok) {
@@ -229,5 +227,60 @@ async function fetchSABnzbdCompleted(
       category: s.category,
       progress: 1.0,
       state: s.status,
+    }));
+}
+
+async function fetchNZBGetCompleted(
+  settings: Record<string, unknown>,
+  category: string
+): Promise<CompletedDownload[]> {
+  const { host, port, useSsl, username, password } = settings as {
+    host: string;
+    port: number;
+    useSsl?: boolean;
+    username?: string;
+    password?: string;
+  };
+  
+  const protocol = useSsl ? 'https' : 'http';
+  const auth = username && password 
+    ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
+    : '';
+  
+  const baseUrl = `${protocol}://${auth}${host}:${port}/jsonrpc`;
+
+  // Fetch history (completed downloads)
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method: 'history', params: [] }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`NZBGet API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const items = data.result || [];
+
+  // Filter by category and successful completion
+  return items
+    .filter((item: { Category: string; Status: string }) => 
+      item.Category === category && item.Status === 'SUCCESS'
+    )
+    .map((item: {
+      NZBID: number;
+      Name: string;
+      DestDir: string;
+      Category: string;
+      Status: string;
+    }) => ({
+      hash: `NZBGet_${item.NZBID}`,
+      name: item.Name,
+      savePath: item.DestDir,
+      contentPath: item.DestDir,
+      category: item.Category,
+      progress: 1.0,
+      state: item.Status,
     }));
 }

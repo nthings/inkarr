@@ -9,6 +9,16 @@ import { getInkarrContentPaths } from './download-client-query';
 // Extensions that support ComicInfo.xml metadata
 const COMIC_INFO_EXTENSIONS = ['.cbz', '.cbr', '.cb7'];
 
+// All supported media file extensions
+const SUPPORTED_EXTENSIONS = [
+  // Comic archives
+  '.cbz', '.cbr', '.cb7', '.cbt',
+  // eBooks  
+  '.epub', '.pdf', '.mobi', '.azw', '.azw3',
+  // Other archives that might contain comics
+  '.zip', '.rar', '.7z',
+];
+
 export interface ScannedFile {
   filename: string;
   path: string;
@@ -29,12 +39,121 @@ export interface ParsedFilename {
   quality?: string;
 }
 
+// Scene release tags to strip from series titles
+const SCENE_RELEASE_TAGS = [
+  // Language tags
+  'SWEDISH', 'SWEDiSH', 'ENGLISH', 'ENGLiSH', 'FRENCH', 'GERMAN', 'SPANISH', 'ITALIAN', 'JAPANESE', 'KOREAN', 'CHINESE',
+  // Format tags
+  'HYBRID', 'HYBRiD', 'COMIC', 'COMiC', 'MANGA', 'EBOOK', 'eBook', 'PDF', 'CBZ', 'CBR', 'EPUB',
+  // Quality tags
+  'DIGITAL', 'DiGiTAL', 'SCAN', 'HQ', 'LQ', 'WEB', 'WEBRIP', 'RETAIL',
+  // Common scene tags
+  'REPACK', 'PROPER', 'INTERNAL', 'iNTERNA', 'READNFO', 'DIRFIX', 'NFOFIX',
+];
+
+/**
+ * Parse a scene release name (dots as separators)
+ * Example: "The.Walking.Dead.No.03.2014.SWEDiSH.HYBRiD.COMiC.eBook-AgentX"
+ * Note: "No." in comics refers to issue/chapter numbers, not volumes
+ */
+function parseSceneReleaseName(name: string, result: ParsedFilename): ParsedFilename {
+  // Extract release group (after hyphen at end)
+  const groupMatch = name.match(/-([A-Za-z][A-Za-z0-9]+)$/);
+  if (groupMatch) {
+    result.releaseGroup = groupMatch[1];
+    name = name.replace(groupMatch[0], '');
+  }
+  
+  // Split by dots
+  const parts = name.split('.');
+  
+  // Find and extract issue/chapter number (No.XX, Issue.XX) or volume number (Vol.XX)
+  // In American comics, "No." refers to issue numbers (chapters), not volumes
+  let numberIndex = -1;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    
+    // Check for "No" followed by number - this is CHAPTER/ISSUE number in comics
+    if (part.toLowerCase() === 'no' && i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
+      result.chapterNumber = parseInt(parts[i + 1], 10);
+      numberIndex = i;
+      break;
+    }
+    
+    // Check for "NoXX" pattern (merged) - CHAPTER number
+    const noMatch = part.match(/^No\.?(\d+)$/i);
+    if (noMatch) {
+      result.chapterNumber = parseInt(noMatch[1], 10);
+      numberIndex = i;
+      break;
+    }
+    
+    // Check for "Issue" followed by number - CHAPTER number
+    if (part.toLowerCase() === 'issue' && i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
+      result.chapterNumber = parseInt(parts[i + 1], 10);
+      numberIndex = i;
+      break;
+    }
+    
+    // Check for "Vol" or "Volume" followed by number - VOLUME number
+    if ((part.toLowerCase() === 'vol' || part.toLowerCase() === 'volume') && i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
+      result.volumeNumber = parseInt(parts[i + 1], 10);
+      numberIndex = i;
+      break;
+    }
+    
+    // Check for "VolXX" or "vXX" pattern - VOLUME number
+    const volMatch = part.match(/^(?:Vol|v)\.?(\d+)$/i);
+    if (volMatch) {
+      result.volumeNumber = parseInt(volMatch[1], 10);
+      numberIndex = i;
+      break;
+    }
+  }
+  
+  // Find year (4 digits, typically 1900-2099)
+  for (let i = 0; i < parts.length; i++) {
+    if (/^(19|20)\d{2}$/.test(parts[i])) {
+      result.year = parseInt(parts[i], 10);
+      break;
+    }
+  }
+  
+  // Build series title from parts before number indicator/year/tags
+  const titleParts: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const partLower = part.toLowerCase();
+    
+    // Stop at number indicator
+    if (numberIndex >= 0 && i >= numberIndex) break;
+    
+    // Stop at year
+    if (/^(19|20)\d{2}$/.test(part)) break;
+    
+    // Skip if it's a known tag
+    if (SCENE_RELEASE_TAGS.some(tag => tag.toLowerCase() === partLower)) break;
+    
+    // Skip standalone numbers at the end (often quality like "720" or stray numbers)
+    if (/^\d+$/.test(part) && i === parts.length - 1) break;
+    
+    titleParts.push(part);
+  }
+  
+  // Join with spaces and clean up
+  result.seriesTitle = titleParts.join(' ').trim();
+  
+  return result;
+}
+
 /**
  * Parse a filename to extract series title, volume/chapter number, etc.
+ * Handles both clean filenames and scene release naming conventions.
  * Examples:
  * - "Jujutsu Kaisen - Vol.001.cbz" -> { seriesTitle: "Jujutsu Kaisen", volumeNumber: 1 }
  * - "One Piece v23 (Digital) [GroupName].cbz" -> { seriesTitle: "One Piece", volumeNumber: 23, releaseGroup: "GroupName" }
  * - "Naruto - Chapter 100.cbz" -> { seriesTitle: "Naruto", chapterNumber: 100 }
+ * - "The.Walking.Dead.No.03.2014.SWEDiSH.HYBRiD.COMiC.eBook-AgentX.pdf" -> { seriesTitle: "The Walking Dead", volumeNumber: 3, year: 2014, releaseGroup: "AgentX" }
  */
 export function parseFilename(filename: string): ParsedFilename {
   // Remove extension
@@ -44,6 +163,13 @@ export function parseFilename(filename: string): ParsedFilename {
   const result: ParsedFilename = {
     seriesTitle: '',
   };
+
+  // Check if this looks like a scene release (dots as separators)
+  const isSceneRelease = name.includes('.') && !name.includes(' ') && name.split('.').length > 3;
+  
+  if (isSceneRelease) {
+    return parseSceneReleaseName(name, result);
+  }
 
   // Extract release group - [GroupName] or (GroupName) at end
   const releaseGroupMatch = name.match(/[\[\(]([^\[\]\(\)]+)[\]\)]$/);
@@ -180,12 +306,15 @@ export async function scanDirectory(
   
   if (isRootCall && filterByDownloadClient) {
     downloadClientPaths = await getInkarrContentPaths();
-    console.log(`[Scanner] Filter by download client enabled. Found ${downloadClientPaths.size} inkarr download paths:`);
+    console.log(`[Scanner] Filter by download client enabled. Found ${downloadClientPaths.size} download paths:`);
+    let count = 0;
     for (const p of downloadClientPaths) {
-      console.log(`  - ${p}`);
+      if (count < 5) console.log(`[Scanner]   - ${p}`);
+      count++;
     }
+    if (count > 5) console.log(`[Scanner]   ... and ${count - 5} more`);
     if (downloadClientPaths.size === 0) {
-      console.log('[Scanner] No inkarr downloads found - no files will be imported');
+      console.log('[Scanner] No category downloads found - no files will be imported');
     }
   }
 
@@ -206,8 +335,12 @@ export async function scanDirectory(
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
         
-        // When filtering by download client, accept any file from inkarr downloads
-        // Otherwise, use extension whitelist as fallback
+        // Only process supported media file extensions
+        if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+          continue;
+        }
+        
+        // When filtering by download client, only include files from tagged downloads
         if (filterByDownloadClient && downloadClientPaths) {
           const normalizedPath = fullPath.replace(/\/+/g, '/');
           let isInkarrDownload = false;
@@ -222,7 +355,7 @@ export async function scanDirectory(
           }
           
           if (!isInkarrDownload) {
-            continue; // Skip files not from inkarr downloads
+            continue; // Skip files not from tagged downloads
           }
         }
         

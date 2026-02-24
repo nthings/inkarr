@@ -31,6 +31,8 @@ interface SearchModalProps {
   chapterId?: number;
 }
 
+const PAGE_SIZE = 25;
+
 export function SearchModal({
   isOpen,
   onClose,
@@ -47,6 +49,7 @@ export function SearchModal({
   const [grabbing, setGrabbing] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"seeders" | "size" | "date">("seeders");
   const [protocolFilter, setProtocolFilter] = useState<"all" | "TORRENT" | "USENET">("all");
+  const [page, setPage] = useState(1);
 
   const search = useCallback(async (term?: string) => {
     setLoading(true);
@@ -70,6 +73,7 @@ export function SearchModal({
       
       const data = await res.json();
       setReleases(data.releases || []);
+      setPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
     } finally {
@@ -133,6 +137,11 @@ export function SearchModal({
     protocolFilter === "all" || r.protocol === protocolFilter
   );
 
+  // Reset to page 1 when filter changes result count
+  useEffect(() => {
+    setPage(1);
+  }, [protocolFilter, sortBy]);
+
   const sortedReleases = [...filteredReleases].sort((a, b) => {
     switch (sortBy) {
       case "seeders":
@@ -145,6 +154,13 @@ export function SearchModal({
         return 0;
     }
   });
+
+  // Pagination
+  const totalPages = Math.ceil(sortedReleases.length / PAGE_SIZE);
+  const paginatedReleases = sortedReleases.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  );
 
   if (!isOpen) return null;
 
@@ -235,7 +251,9 @@ export function SearchModal({
               </div>
               
               <span className="text-xs sm:text-sm text-zinc-500 ml-auto">
-                {filteredReleases.length}/{releases.length}
+                {sortedReleases.length > 0 
+                  ? `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, sortedReleases.length)} of ${sortedReleases.length}`
+                  : `0 results`}
               </span>
             </div>
           </div>
@@ -260,11 +278,11 @@ export function SearchModal({
               </div>
             )}
             
-            {sortedReleases.length > 0 && (
+            {paginatedReleases.length > 0 && (
               <>
                 {/* Mobile Card View */}
                 <div className="md:hidden divide-y divide-zinc-800">
-                  {sortedReleases.map((release) => (
+                  {paginatedReleases.map((release) => (
                     <div key={release.guid} className="p-4 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -333,7 +351,7 @@ export function SearchModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedReleases.map((release) => (
+                  {paginatedReleases.map((release) => (
                     <tr 
                       key={release.guid}
                       className="border-t border-zinc-800 hover:bg-zinc-800/30 transition-colors"
@@ -417,7 +435,57 @@ export function SearchModal({
           </div>
           
           {/* Footer */}
-          <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-zinc-800 flex justify-end">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-zinc-800 flex items-center justify-between">
+            {/* Pagination Controls */}
+            {totalPages > 1 ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(1)}
+                  disabled={page === 1}
+                  className="p-2 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="First page"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="p-2 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Previous page"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <span className="text-sm text-zinc-400 px-2">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="p-2 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Next page"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  disabled={page === totalPages}
+                  className="p-2 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Last page"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <div />
+            )}
             <button
               onClick={onClose}
               className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-medium transition-colors text-sm"

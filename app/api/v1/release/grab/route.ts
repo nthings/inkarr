@@ -111,6 +111,9 @@ export async function POST(request: NextRequest) {
       case 'SABnzbd':
         downloadResult = await sendToSABnzbd(settings, downloadUrl);
         break;
+      case 'NZBGet':
+        downloadResult = await sendToNZBGet(settings, downloadUrl);
+        break;
       case 'Blackhole':
         downloadResult = await sendToBlackhole(settings, downloadUrl, guid);
         break;
@@ -270,23 +273,23 @@ async function sendToTransmission(
 }
 
 async function sendToSABnzbd(
-  settings: { host: string; port: number; apiKey: string; category?: string; useSsl?: boolean },
+  settings: { host: string; port: number; apiKey: string; category?: string; useSsl?: boolean; urlBase?: string },
   url: string
 ): Promise<DownloadResult> {
   try {
-    const baseUrl = `${settings.useSsl ? 'https' : 'http'}://${settings.host}:${settings.port}/sabnzbd/api`;
+    // urlBase can be empty (API at /api) or a path like /sabnzbd (API at /sabnzbd/api)
+    const urlBase = settings.urlBase ? `/${settings.urlBase.replace(/^\/|\/$/g, '')}` : '';
+    const baseUrl = `${settings.useSsl ? 'https' : 'http'}://${settings.host}:${settings.port}${urlBase}/api`;
     
     const params = new URLSearchParams({
       mode: 'addurl',
       name: url,
       apikey: settings.apiKey,
       output: 'json',
+      cat: settings.category || 'inkarr',  // Always use inkarr category for tracking
     });
-    
-    if (settings.category) {
-      params.set('cat', settings.category);
-    }
 
+    debug('[SABnzbd] Sending to:', `${baseUrl}?mode=addurl&cat=${settings.category || 'inkarr'}&name=...`);
     const response = await fetch(`${baseUrl}?${params}`);
     
     if (!response.ok) {
@@ -326,6 +329,62 @@ async function sendToBlackhole(
     return { success: true, downloadId: guid };
   } catch (error) {
     console.error('Blackhole error:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+async function sendToNZBGet(
+  settings: { host: string; port: number; username?: string; password?: string; category?: string; useSsl?: boolean },
+  url: string
+): Promise<DownloadResult> {
+  try {
+    const protocol = settings.useSsl ? 'https' : 'http';
+    const auth = settings.username && settings.password 
+      ? `${encodeURIComponent(settings.username)}:${encodeURIComponent(settings.password)}@`
+      : '';
+    
+    const baseUrl = `${protocol}://${auth}${settings.host}:${settings.port}/jsonrpc`;
+    const category = settings.category || 'inkarr';
+
+    // NZBGet uses JSON-RPC API
+    const response = await fetch(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method: 'append',
+        params: [
+          '',           // NZBFilename (empty = auto-detect from URL)
+          url,          // URL to download
+          category,     // Category - use inkarr for tracking
+          0,            // Priority (0 = normal)
+          false,        // AddToTop
+          false,        // AddPaused
+          '',           // DupeKey
+          0,            // DupeScore
+          'SCORE',      // DupeMode
+          [],           // PPParameters
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      return { success: false, error: 'Failed to connect to NZBGet' };
+    }
+
+    const result = await response.json();
+    
+    if (result.error) {
+      return { success: false, error: result.error.message || 'NZBGet error' };
+    }
+
+    // result.result is the NZBID on success, or 0/negative on failure
+    if (result.result > 0) {
+      return { success: true, downloadId: `NZBGet_${result.result}` };
+    } else {
+      return { success: false, error: 'NZBGet rejected the download' };
+    }
+  } catch (error) {
+    console.error('NZBGet error:', error);
     return { success: false, error: String(error) };
   }
 }

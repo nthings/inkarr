@@ -370,10 +370,23 @@ async function parseReleases(xml: string, protocol: DownloadProtocol): Promise<R
   return releases;
 }
 
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
 function extractTag(xml: string, tag: string): string | undefined {
   const regex = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i');
   const match = regex.exec(xml);
-  return match ? (match[1] || match[2])?.trim() : undefined;
+  const value = match ? (match[1] || match[2])?.trim() : undefined;
+  // Decode XML entities (CDATA sections don't need decoding, but regular content does)
+  return value ? (match[1] ? value : decodeXmlEntities(value)) : undefined;
 }
 
 function extractNewznabAttr(xml: string, name: string): string | undefined {
@@ -383,9 +396,9 @@ function extractNewznabAttr(xml: string, name: string): string | undefined {
     // Try torznab namespace
     const torznabRegex = new RegExp(`<torznab:attr\\s+name="${name}"\\s+value="([^"]*)"`, 'i');
     const torznabMatch = torznabRegex.exec(xml);
-    return torznabMatch?.[1];
+    return torznabMatch?.[1] ? decodeXmlEntities(torznabMatch[1]) : undefined;
   }
-  return match?.[1];
+  return match?.[1] ? decodeXmlEntities(match[1]) : undefined;
 }
 
 function parseReleaseTitle(title: string): Partial<ReleaseInfo> {

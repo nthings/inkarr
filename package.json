@@ -16,6 +16,7 @@
     "@prisma/adapter-better-sqlite3": "^7.4.0",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
+    "dotenv": "^16.4.5",
     "next": "16.1.6",
     "next-swagger-doc": "^0.4.1",
     "react": "19.2.3",

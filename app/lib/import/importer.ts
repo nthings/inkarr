@@ -43,6 +43,7 @@ export interface ImportedFile {
   newPath: string;
   seriesId: number;
   volumeId?: number;
+  chapterId?: number;
   mediaFileId: number;
 }
 
@@ -168,12 +169,13 @@ async function findOrCreateSeries(
 }
 
 /**
- * Find an existing volume for a series (does NOT create new volumes)
- * Volumes should come from the metadata provider, not from imports
+ * Find or create a volume for a series
+ * If the volume doesn't exist, it will be created automatically during import
  */
-async function findExistingVolume(
+async function findOrCreateVolume(
   seriesId: number,
-  volumeNumber: number | undefined
+  volumeNumber: number | undefined,
+  seriesTitle: string
 ): Promise<number | undefined> {
   if (volumeNumber === undefined) {
     return undefined;
@@ -190,9 +192,59 @@ async function findExistingVolume(
     return existingVolume.id;
   }
   
-  // Volume doesn't exist - don't create it, just log and return undefined
-  console.warn(`Volume ${volumeNumber} not found for series ${seriesId}. Import will proceed without volume assignment.`);
-  return undefined;
+  // Volume doesn't exist - create it automatically
+  console.log(`Creating volume ${volumeNumber} for series ${seriesId} (${seriesTitle})`);
+  
+  const newVolume = await prisma.volume.create({
+    data: {
+      seriesId,
+      volumeNumber,
+      title: `Volume ${volumeNumber}`,
+      monitored: true,
+    },
+  });
+  
+  return newVolume.id;
+}
+
+/**
+ * Find or create a chapter/issue for a series
+ * If the chapter doesn't exist, it will be created automatically during import
+ * Note: In American comics, "No." refers to issue numbers which map to chapters
+ */
+async function findOrCreateChapter(
+  seriesId: number,
+  chapterNumber: number | undefined,
+  seriesTitle: string
+): Promise<number | undefined> {
+  if (chapterNumber === undefined) {
+    return undefined;
+  }
+  
+  const existingChapter = await prisma.chapter.findFirst({
+    where: {
+      seriesId,
+      chapterNumber,
+    },
+  });
+  
+  if (existingChapter) {
+    return existingChapter.id;
+  }
+  
+  // Chapter doesn't exist - create it automatically
+  console.log(`Creating chapter/issue ${chapterNumber} for series ${seriesId} (${seriesTitle})`);
+  
+  const newChapter = await prisma.chapter.create({
+    data: {
+      seriesId,
+      chapterNumber,
+      title: `Issue #${chapterNumber}`,
+      monitored: true,
+    },
+  });
+  
+  return newChapter.id;
 }
 
 /**
@@ -287,13 +339,11 @@ async function importFile(
     console.warn(`Low confidence series match (${seriesMatch.confidence}) for ${file.filename}: ${seriesMatch.reason}`);
   }
   
-  // Find existing volume (don't create new ones - volumes come from metadata provider)
-  const volumeId = await findExistingVolume(seriesId, parsed.volumeNumber);
+  // Find or create volume for this file (if volume number detected)
+  const volumeId = await findOrCreateVolume(seriesId, parsed.volumeNumber, series.title);
   
-  // If volume matching is required and no volume was found, skip this file
-  if (requireVolumeMatch && parsed.volumeNumber !== undefined && !volumeId) {
-    throw new Error(`Volume ${parsed.volumeNumber} not found for series "${series.title}". Skipping import as requireVolumeMatch is enabled.`);
-  }
+  // Find or create chapter for this file (if chapter/issue number detected)
+  const chapterId = await findOrCreateChapter(seriesId, parsed.chapterNumber, series.title);
   
   // Create series folder if it doesn't exist using naming config
   const seriesTokens: NamingTokens = {
@@ -375,6 +425,7 @@ async function importFile(
     data: {
       seriesId,
       volumeId,
+      chapterId,
       path: dbNewPath,
       relativePath: newFilename,
       size: BigInt(size),
@@ -389,6 +440,7 @@ async function importFile(
     data: {
       seriesId,
       volumeId,
+      chapterId,
       mediaFileId: mediaFile.id,
       sourceTitle: file.filename,
       eventType: 'DOWNLOAD_FOLDER_IMPORTED',
@@ -406,6 +458,7 @@ async function importFile(
     newPath: dbNewPath,
     seriesId,
     volumeId,
+    chapterId,
     mediaFileId: mediaFile.id,
   };
 }
@@ -453,13 +506,8 @@ export async function importFiles(
         rootFolderPath: rootFolder.localPath,
       };
       
-      // Find or create series
-      const seriesId = options.seriesId ?? await findOrCreateSeries(
-        seriesTitle,
-        rootFolder.localPath,
-        namingConfig,
-        options.qualityProfileId
-      );
+      // Defer series creation until first successful file import
+      let seriesId: number | undefined = options.seriesId;
       
       // Import each file
       for (const file of seriesFiles) {
@@ -469,6 +517,16 @@ export async function importFiles(
             result.errors.push(`File already imported: ${file.filename}`);
             result.failed++;
             continue;
+          }
+          
+          // Only create series when we have a file ready to import
+          if (seriesId === undefined) {
+            seriesId = await findOrCreateSeries(
+              seriesTitle,
+              rootFolder.localPath,
+              namingConfig,
+              options.qualityProfileId
+            );
           }
           
           const importedFile = await importFile(file, seriesOptions, seriesId, namingConfig);
