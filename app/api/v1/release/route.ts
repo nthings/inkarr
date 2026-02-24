@@ -386,7 +386,7 @@ function extractTag(xml: string, tag: string): string | undefined {
   const match = regex.exec(xml);
   const value = match ? (match[1] || match[2])?.trim() : undefined;
   // Decode XML entities (CDATA sections don't need decoding, but regular content does)
-  return value ? (match[1] ? value : decodeXmlEntities(value)) : undefined;
+  return value && match ? (match[1] ? value : decodeXmlEntities(value)) : undefined;
 }
 
 function extractNewznabAttr(xml: string, name: string): string | undefined {
