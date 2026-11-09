@@ -4,7 +4,7 @@
 FROM node:24-alpine AS base
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10 --activate
 
 # Install dependencies needed for native modules (better-sqlite3)
 RUN apk add --no-cache libc6-compat python3 make g++
