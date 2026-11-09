@@ -86,6 +86,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 
+# Prisma CLI for `db push` at startup (standalone build doesn't ship it; unpinned npx pulled breaking majors)
+COPY --from=builder /app/prisma /opt/prisma/prisma
+COPY --from=builder /app/prisma.config.ts /opt/prisma/prisma.config.ts
+RUN cd /opt/prisma && npm install --no-save --no-package-lock --no-audit --no-fund prisma@7.4.0 dotenv@16 && npm cache clean --force
+
 # Copy better-sqlite3 native module (needed for Prisma SQLite adapter)
 # The standalone doesn't include native modules, so we copy from builder
 COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3

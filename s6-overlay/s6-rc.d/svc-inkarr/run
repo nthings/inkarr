@@ -7,7 +7,7 @@ cd /app
 export DATABASE_URL
 
 echo "[services] Running Prisma migrations..."
-su-exec abc npx prisma db push
+(cd /opt/prisma && su-exec abc ./node_modules/.bin/prisma db push)
 
 echo "[services] Starting Inkarr..."
 exec su-exec abc node server.js
