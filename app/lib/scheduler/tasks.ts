@@ -112,10 +112,8 @@ export async function executeAutoImport(context: TaskContext): Promise<TaskResul
     downloadPath = `${downloadPath}/${category}`;
   }
   
-  // Get root folder
-  const rootFolder = await prisma.rootFolder.findFirst({
-    orderBy: { id: 'asc' },
-  });
+  // Make sure at least one root folder exists (the importer picks one per media type)
+  const rootFolder = await prisma.rootFolder.findFirst();
   
   if (!rootFolder) {
     return {
@@ -126,7 +124,7 @@ export async function executeAutoImport(context: TaskContext): Promise<TaskResul
   
   // Resolve paths to local filesystem
   const localDownloadPath = resolveToLocal(downloadPath);
-  const localRootPath = resolveToLocal(rootFolder.path);
+  const requireVolumeMatch = await getConfigValue('RequireVolumeMatch', 'true') !== 'false';
   
   try {
     // Scan downloads folder - filter by download client category if enabled
@@ -142,9 +140,9 @@ export async function executeAutoImport(context: TaskContext): Promise<TaskResul
     
     // Import files
     const result = await importFiles(files, {
-      rootFolderPath: localRootPath,
       deleteSource,
       copyMode,
+      requireVolumeMatch,
     });
     
     return {

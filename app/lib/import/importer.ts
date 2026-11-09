@@ -125,6 +125,7 @@ async function findOrCreateSeries(
   seriesTitle: string,
   rootFolderPath: string,
   namingConfig: NamingConfig,
+  mediaType: 'MANGA' | 'COMIC',
   qualityProfileId?: number
 ): Promise<number> {
   const cleanTitle = seriesTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -155,7 +156,7 @@ async function findOrCreateSeries(
       title: seriesTitle,
       sortTitle,
       cleanTitle,
-      mediaType: 'MANGA',
+      mediaType,
       status: 'CONTINUING',
       monitored: true,
       monitorStatus: 'ALL',
@@ -175,7 +176,8 @@ async function findOrCreateSeries(
 async function findOrCreateVolume(
   seriesId: number,
   volumeNumber: number | undefined,
-  seriesTitle: string
+  seriesTitle: string,
+  requireVolumeMatch = false
 ): Promise<number | undefined> {
   if (volumeNumber === undefined) {
     return undefined;
@@ -190,6 +192,11 @@ async function findOrCreateVolume(
   
   if (existingVolume) {
     return existingVolume.id;
+  }
+  
+  // Only enforce when metadata has populated volumes, otherwise nothing could ever import
+  if (requireVolumeMatch && await prisma.volume.count({ where: { seriesId } }) > 0) {
+    throw new Error(`Volume ${volumeNumber} does not exist for "${seriesTitle}" (RequireVolumeMatch is enabled)`);
   }
   
   // Volume doesn't exist - create it automatically
@@ -340,20 +347,21 @@ async function importFile(
   }
   
   // Find or create volume for this file (if volume number detected)
-  const volumeId = await findOrCreateVolume(seriesId, parsed.volumeNumber, series.title);
+  const volumeId = await findOrCreateVolume(seriesId, parsed.volumeNumber, series.title, requireVolumeMatch);
   
   // Find or create chapter for this file (if chapter/issue number detected)
   const chapterId = await findOrCreateChapter(seriesId, parsed.chapterNumber, series.title);
   
-  // Create series folder if it doesn't exist using naming config
+  // Existing series keep their own folder; only new series are placed under the import root folder
   const seriesTokens: NamingTokens = {
     seriesTitle: series.title,
     seriesYear: series.year || undefined,
     sortTitle: series.sortTitle,
     cleanTitle: series.cleanTitle,
   };
-  const seriesFolderName = formatSeriesFolder(seriesTokens, namingConfig);
-  const seriesFolderPath = path.join(rootFolderPath, seriesFolderName);
+  const seriesFolderPath = series.path
+    ? resolveToLocal(series.path)
+    : path.join(rootFolderPath, formatSeriesFolder(seriesTokens, namingConfig));
   
   try {
     await access(seriesFolderPath, constants.F_OK);
@@ -525,6 +533,7 @@ export async function importFiles(
               seriesTitle,
               rootFolder.localPath,
               namingConfig,
+              mediaType,
               options.qualityProfileId
             );
           }

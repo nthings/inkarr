@@ -215,7 +215,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const localNewPath = resolveToLocal(newSeriesPath);
 
     // Step 1: Delete all existing MediaFile records for this series
-    // (They'll be recreated by the rescan with correct paths)
+    // (They'll be recreated by the rescan with correct paths; remember their links first)
+    const previousLinks = new Map(
+      (await prisma.mediaFile.findMany({ where: { seriesId } }))
+        .map(mf => [path.relative(currentSeriesPath, mf.path), mf])
+    );
     await prisma.mediaFile.deleteMany({
       where: { seriesId },
     });
@@ -238,20 +242,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     for (const file of files) {
       try {
-        const parsed = parseFilename(file.filename);
+        const parsed = parseFilename(file.filename, series.mediaType);
+        const previous = previousLinks.get(file.relativePath);
         
         // Try to match to a volume or chapter
-        let volumeId: number | null = null;
-        let chapterId: number | null = null;
+        let volumeId: number | null = previous?.volumeId ?? null;
+        let chapterId: number | null = previous?.chapterId ?? null;
         
-        if (parsed.volumeNumber !== undefined) {
+        if (!previous && parsed.volumeNumber !== undefined) {
           const volume = series.volumes.find(v => v.volumeNumber === parsed.volumeNumber);
           if (volume) {
             volumeId = volume.id;
           }
         }
         
-        if (parsed.chapterNumber !== undefined) {
+        if (!previous && parsed.chapterNumber !== undefined) {
           const chapter = series.chapters.find(c => 
             c.chapterNumber === parsed.chapterNumber ||
             c.issueNumber === String(parsed.chapterNumber)

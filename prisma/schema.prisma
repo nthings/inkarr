@@ -384,7 +384,7 @@ model NamingConfig {
   renameFiles             Boolean @default(true)
   replaceIllegalChars     Boolean @default(true)
   colonReplacementFormat  String  @default("smart")
-  standardFileFormat      String  @default("{Series Title} - {Volume Number} - {Chapter Number}")
+  standardFileFormat      String  @default("{Series Title} - Vol.{Volume Number} - Ch.{Chapter Number}")
   seriesFolderFormat      String  @default("{Series Title}")
   volumeFolderFormat      String  @default("Volume {Volume Number}")
   creatorFolderFormat     String  @default("{Creator Name}")

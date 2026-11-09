@@ -125,7 +125,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         processedPaths.add(file.dbPath);
         
         // Parse filename to determine volume/chapter
-        const parsed = parseFilename(file.filename);
+        const parsed = parseFilename(file.filename, series.mediaType);
         
         // Try to match to a volume or chapter
         let volumeId: number | null = null;
@@ -152,12 +152,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         
         if (existingFile) {
           // Update existing record
+          // Keep existing (possibly manual) links when the filename can't be resolved
           await prisma.mediaFile.update({
             where: { id: existingFile.id },
             data: {
               size: BigInt(file.size),
-              volumeId,
-              chapterId,
+              volumeId: volumeId ?? existingFile.volumeId,
+              chapterId: chapterId ?? existingFile.chapterId,
               relativePath: file.relativePath,
             },
           });

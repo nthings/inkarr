@@ -200,27 +200,6 @@ export async function readComicInfo(filePath: string): Promise<ComicInfo | null>
 }
 
 /**
- * Extract volume number from ComicInfo
- * Handles various formats like "1", "01", "1.5", etc.
- */
-export function extractVolumeNumber(info: ComicInfo): number | undefined {
-  // Prefer the explicit Volume field
-  if (info.volume !== undefined && !isNaN(info.volume)) {
-    return info.volume;
-  }
-  
-  // Fall back to Number field if it looks like a volume number
-  if (info.number) {
-    const num = parseFloat(info.number);
-    if (!isNaN(num) && num > 0) {
-      return Math.floor(num); // Return integer part
-    }
-  }
-  
-  return undefined;
-}
-
-/**
  * Extract series title from ComicInfo
  */
 export function extractSeriesTitle(info: ComicInfo): string | undefined {

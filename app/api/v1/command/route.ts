@@ -100,22 +100,15 @@ async function executeImportDownloads(body?: Record<string, unknown>) {
     }
   }
   
-  // Get root folder
-  let rootFolderPath = body?.rootFolderPath as string | undefined;
-  if (!rootFolderPath) {
-    const rootFolder = await prisma.rootFolder.findFirst({
-      orderBy: { id: 'asc' },
-    });
-    rootFolderPath = rootFolder?.path;
-  }
-  
-  if (!rootFolderPath) {
+  // Explicit root folder is optional; the importer picks one per media type
+  const rootFolderPath = body?.rootFolderPath as string | undefined;
+  if (!(await prisma.rootFolder.findFirst())) {
     throw new Error('No root folder configured');
   }
   
   // Resolve paths to local filesystem
   const localDownloadPath = resolveToLocal(downloadPath);
-  const localRootPath = resolveToLocal(rootFolderPath);
+  const localRootPath = rootFolderPath ? resolveToLocal(rootFolderPath) : undefined;
   
   const files = await scanDirectory(localDownloadPath);
   const options: ImportOptions = {

@@ -33,6 +33,8 @@ interface IssueInfo {
   releaseDate?: Date;
   pageCount?: number;
   imageUrl?: string;
+  volumeNumber?: number;  // Volume this chapter is collected in, if known
+  language?: string;
 }
 
 interface RefreshResult {
@@ -158,8 +160,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Sync volumes to database
     const volumeSyncResult = await syncVolumesToDatabase(seriesId, result.volumes, series.volumes);
     
-    // Sync chapters to database
-    const chapterSyncResult = await syncChaptersToDatabase(seriesId, result.chapters, series.chapters);
+    // Sync chapters to database, linking each to its volume when the provider knows it
+    const volumeIds = new Map(
+      (await prisma.volume.findMany({ where: { seriesId }, select: { id: true, volumeNumber: true } }))
+        .map(v => [v.volumeNumber, v.id])
+    );
+    const chapterSyncResult = await syncChaptersToDatabase(seriesId, result.chapters, series.chapters, volumeIds);
 
     // Update series last sync time, counts, and populate missing provider IDs
     await prisma.series.update({
@@ -670,53 +676,62 @@ async function fetchFromMangaDex(seriesTitle: string, malId?: string): Promise<R
     }
     volumes.sort((a, b) => a.volumeNumber - b.volumeNumber);
     
-    // Fetch chapters (try multiple languages if English fails)
-    const chaptersUrl = new URL('https://api.mangadex.org/chapter');
-    chaptersUrl.searchParams.set('manga', mangaId);
-    chaptersUrl.searchParams.set('limit', '500');
-    chaptersUrl.searchParams.set('order[chapter]', 'asc');
-    // Try English first, then any language
-    chaptersUrl.searchParams.append('translatedLanguage[]', 'en');
-    
-    let chaptersRes = await fetch(chaptersUrl.toString());
-    let chaptersData = chaptersRes.ok ? await chaptersRes.json() : { data: [] };
-    
-    // If no English chapters, try without language filter
-    if (!chaptersData.data || chaptersData.data.length === 0) {
-      console.log('MangaDex: No English chapters, trying all languages...');
-      chaptersUrl.searchParams.delete('translatedLanguage[]');
-      chaptersRes = await fetch(chaptersUrl.toString());
-      chaptersData = chaptersRes.ok ? await chaptersRes.json() : { data: [] };
-    }
-    
-    console.log('MangaDex: Chapters API returned', chaptersData.data?.length || 0, 'results');
-    
-    // Build chapter list
+    // Fetch chapters via the manga feed (allows limit=500; /chapter caps at 100), all languages, paginated
     const chapterList: IssueInfo[] = [];
-    
-    for (const ch of chaptersData.data || []) {
-      const attrs = ch.attributes || {};
-      const chNum = attrs.chapter ? parseFloat(attrs.chapter) : null;
+    for (let offset = 0; offset < 10000; offset += 500) {
+      const feedUrl = new URL(`https://api.mangadex.org/manga/${mangaId}/feed`);
+      feedUrl.searchParams.set('limit', '500');
+      feedUrl.searchParams.set('offset', String(offset));
+      feedUrl.searchParams.set('order[chapter]', 'asc');
+      const feedRes = await fetch(feedUrl.toString());
+      if (!feedRes.ok) {
+        console.error('MangaDex feed failed:', feedRes.status, await feedRes.text());
+        break;
+      }
+      const feed = await feedRes.json();
       
-      // Add chapter
-      if (chNum !== null) {
+      for (const ch of feed.data || []) {
+        const attrs = ch.attributes || {};
+        const chNum = attrs.chapter ? parseFloat(attrs.chapter) : NaN;
+        if (isNaN(chNum)) continue;
+        const volNum = attrs.volume ? parseInt(attrs.volume, 10) : NaN;
         chapterList.push({
           foreignId: `mangadex-chapter-${ch.id}`,
           title: attrs.title || undefined,
           chapterNumber: chNum,
           issueNumber: attrs.chapter,
+          volumeNumber: isNaN(volNum) ? undefined : volNum,
+          language: attrs.translatedLanguage,
           releaseDate: attrs.publishAt ? new Date(attrs.publishAt) : undefined,
         });
       }
+      
+      if (offset + 500 >= (feed.total ?? 0)) break;
     }
     
-    // Deduplicate chapters (keep first occurrence of each chapter number)
-    const seenChapters = new Set<number>();
-    const chapters = chapterList.filter(ch => {
-      if (ch.chapterNumber && seenChapters.has(ch.chapterNumber)) return false;
-      if (ch.chapterNumber) seenChapters.add(ch.chapterNumber);
-      return true;
-    });
+    console.log('MangaDex: Feed returned', chapterList.length, 'chapter entries');
+    
+    // One entry per chapter number: prefer English, but take the volume from any translation that knows it
+    const byNumber = new Map<number, IssueInfo>();
+    for (const ch of chapterList) {
+      const current = byNumber.get(ch.chapterNumber!);
+      if (!current || (ch.language === 'en' && current.language !== 'en')) {
+        byNumber.set(ch.chapterNumber!, { ...ch, volumeNumber: ch.volumeNumber ?? current?.volumeNumber });
+      } else if (current.volumeNumber === undefined) {
+        current.volumeNumber = ch.volumeNumber;
+      }
+    }
+    const chapters = [...byNumber.values()].sort((a, b) => a.chapterNumber! - b.chapterNumber!);
+    
+    // Volumes known from chapters but without cover art
+    const knownVolumes = new Set(volumes.map(v => v.volumeNumber));
+    for (const ch of chapters) {
+      if (ch.volumeNumber !== undefined && !knownVolumes.has(ch.volumeNumber)) {
+        knownVolumes.add(ch.volumeNumber);
+        volumes.push({ foreignId: `mangadex-volume-${mangaId}-${ch.volumeNumber}`, volumeNumber: ch.volumeNumber });
+      }
+    }
+    volumes.sort((a, b) => a.volumeNumber - b.volumeNumber);
     
     console.log('MangaDex: Found', volumes.length, 'volumes,', chapters.length, 'unique chapters');
     console.log('Sample volume:', volumes[0]);
@@ -799,7 +814,8 @@ async function syncVolumesToDatabase(
 async function syncChaptersToDatabase(
   seriesId: number, 
   chapters: IssueInfo[],
-  existingChapters: { id: number; foreignId: string | null; chapterNumber: number | null }[]
+  existingChapters: { id: number; foreignId: string | null; chapterNumber: number | null }[],
+  volumeIds: Map<number | null, number>
 ): Promise<SyncResult> {
   let added = 0;
   let updated = 0;
@@ -814,10 +830,11 @@ async function syncChaptersToDatabase(
 
   for (const chapter of chapters) {
     const existingByFid = existingByForeignId.get(chapter.foreignId);
-    const existingByNum = chapter.chapterNumber 
+    const existingByNum = chapter.chapterNumber !== undefined
       ? existingByNumber.get(chapter.chapterNumber) 
       : undefined;
     const existing = existingByFid || existingByNum;
+    const volumeId = chapter.volumeNumber !== undefined ? volumeIds.get(chapter.volumeNumber) : undefined;
 
     if (existing) {
       // Update existing chapter
@@ -828,6 +845,7 @@ async function syncChaptersToDatabase(
           title: chapter.title,
           chapterNumber: chapter.chapterNumber,
           issueNumber: chapter.issueNumber,
+          volumeId,
           overview: chapter.overview,
           releaseDate: chapter.releaseDate,
           pageCount: chapter.pageCount,
@@ -840,6 +858,7 @@ async function syncChaptersToDatabase(
       await prisma.chapter.create({
         data: {
           seriesId,
+          volumeId,
           foreignId: chapter.foreignId,
           title: chapter.title,
           chapterNumber: chapter.chapterNumber,

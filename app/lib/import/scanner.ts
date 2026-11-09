@@ -3,7 +3,7 @@
 
 import { readdir, stat } from 'fs/promises';
 import path from 'path';
-import { readComicInfo, extractVolumeNumber, extractSeriesTitle, ComicInfo } from './comic-info';
+import { readComicInfo, extractSeriesTitle, ComicInfo } from './comic-info';
 import { getInkarrContentPaths } from './download-client-query';
 
 // Extensions that support ComicInfo.xml metadata
@@ -155,7 +155,7 @@ function parseSceneReleaseName(name: string, result: ParsedFilename): ParsedFile
  * - "Naruto - Chapter 100.cbz" -> { seriesTitle: "Naruto", chapterNumber: 100 }
  * - "The.Walking.Dead.No.03.2014.SWEDiSH.HYBRiD.COMiC.eBook-AgentX.pdf" -> { seriesTitle: "The Walking Dead", volumeNumber: 3, year: 2014, releaseGroup: "AgentX" }
  */
-export function parseFilename(filename: string): ParsedFilename {
+export function parseFilename(filename: string, mediaType?: string): ParsedFilename {
   // Remove extension
   const ext = path.extname(filename);
   let name = filename.replace(ext, '');
@@ -188,13 +188,10 @@ export function parseFilename(filename: string): ParsedFilename {
   // Clean up common patterns
   name = name.replace(/[\[\(][^\[\]\(\)]*[\]\)]/g, ' ').trim();
 
-  // Extract volume number - various patterns
-  // Vol.001, Vol 1, v01, Volume 1, etc.
+  // Extract explicitly labelled volume number: Vol.001, Vol 1, v01, Volume 1, etc.
   const volumePatterns = [
-    /[-\s]+Vol\.?\s*(\d+)/i,
-    /[-\s]+Volume\s*(\d+)/i,
+    /[-\s]+Vol(?:ume)?\.?\s*(\d+)/i,
     /[-\s]+v(\d+)/i,
-    /\s+(\d+)$/,
   ];
 
   for (const pattern of volumePatterns) {
@@ -206,11 +203,11 @@ export function parseFilename(filename: string): ParsedFilename {
     }
   }
 
-  // Extract chapter number
+  // Extract explicitly labelled chapter/issue number: Ch.10, Chapter 10.5, c010, #12
   const chapterPatterns = [
-    /[-\s]+Ch\.?\s*(\d+(?:\.\d+)?)/i,
-    /[-\s]+Chapter\s*(\d+(?:\.\d+)?)/i,
+    /[-\s]+Ch(?:apter)?\.?\s*(\d+(?:\.\d+)?)/i,
     /[-\s]+c(\d+(?:\.\d+)?)/i,
+    /[-\s]+#(\d+(?:\.\d+)?)/,
   ];
 
   for (const pattern of chapterPatterns) {
@@ -219,6 +216,16 @@ export function parseFilename(filename: string): ParsedFilename {
       result.chapterNumber = parseFloat(match[1]);
       name = name.replace(pattern, '').trim();
       break;
+    }
+  }
+
+  // Unlabelled trailing number ("Batman 001", "Naruto 05"): an issue for comics, a volume otherwise
+  if (result.volumeNumber === undefined && result.chapterNumber === undefined) {
+    const bare = name.match(/\s+(\d+(?:\.\d+)?)$/);
+    if (bare) {
+      if (mediaType === 'COMIC') result.chapterNumber = parseFloat(bare[1]);
+      else result.volumeNumber = parseInt(bare[1], 10);
+      name = name.slice(0, bare.index).trim();
     }
   }
 
@@ -283,6 +290,37 @@ export function parseFolderName(folderName: string): ParsedFilename & { volumeRa
     .trim();
 
   return result;
+}
+
+/**
+ * Refine parsed numbers with ComicInfo.xml and the release folder name.
+ * ComicInfo <Volume> is the volume; <Number> is the issue/chapter, except in volume-only releases.
+ * A file numbered outside its pack's "[Vol.X - Vol.Y]" range is a loose chapter.
+ */
+export function applyContextHints(parsed: ParsedFilename, info?: ComicInfo, folderName?: string): ParsedFilename {
+  if (info) {
+    const ciSeriesTitle = extractSeriesTitle(info);
+    if (ciSeriesTitle && ciSeriesTitle.length >= 2) parsed.seriesTitle = ciSeriesTitle;
+    if (info.year) parsed.year = info.year;
+    if (info.volume !== undefined && !isNaN(info.volume)) parsed.volumeNumber = info.volume;
+
+    const ciNumber = info.number ? parseFloat(info.number) : NaN;
+    if (!isNaN(ciNumber)) {
+      const looksLikeVolume = info.volume === undefined && parsed.chapterNumber === undefined &&
+        (parsed.volumeNumber !== undefined || /^vol/i.test(info.title ?? ''));
+      if (!looksLikeVolume) parsed.chapterNumber = ciNumber;
+      else if (parsed.volumeNumber === undefined) parsed.volumeNumber = Math.floor(ciNumber);
+    }
+  }
+
+  const range = folderName ? parseFolderName(folderName).volumeRange : undefined;
+  if (range && parsed.volumeNumber !== undefined && parsed.chapterNumber === undefined &&
+      (parsed.volumeNumber < range[0] || parsed.volumeNumber > range[1])) {
+    parsed.chapterNumber = parsed.volumeNumber;
+    parsed.volumeNumber = undefined;
+  }
+
+  return parsed;
 }
 
 /**
@@ -361,38 +399,17 @@ export async function scanDirectory(
         
         const stats = await stat(fullPath);
         const parsed = parseFilename(entry.name);
+        const parentFolder = path.basename(path.dirname(fullPath));
         
         // Try to read ComicInfo.xml from the archive
         let comicInfo: ComicInfo | undefined;
         if (COMIC_INFO_EXTENSIONS.includes(ext)) {
-          const info = await readComicInfo(fullPath);
-          if (info) {
-            comicInfo = info;
-            
-            // Use ComicInfo metadata to override/improve parsed values
-            const ciSeriesTitle = extractSeriesTitle(info);
-            const ciVolumeNumber = extractVolumeNumber(info);
-            
-            // Prefer ComicInfo series title if available and looks valid
-            if (ciSeriesTitle && ciSeriesTitle.length >= 2) {
-              parsed.seriesTitle = ciSeriesTitle;
-            }
-            
-            // Prefer ComicInfo volume number if available
-            if (ciVolumeNumber !== undefined) {
-              parsed.volumeNumber = ciVolumeNumber;
-            }
-            
-            // Use ComicInfo year if available
-            if (info.year) {
-              parsed.year = info.year;
-            }
-          }
+          comicInfo = (await readComicInfo(fullPath)) ?? undefined;
         }
+        applyContextHints(parsed, comicInfo, parentFolder !== path.basename(basePath) ? parentFolder : undefined);
         
         // If we couldn't parse the filename well, try the parent folder
         if (!parsed.seriesTitle || parsed.seriesTitle.length < 2) {
-          const parentFolder = path.basename(path.dirname(fullPath));
           if (parentFolder !== path.basename(basePath)) {
             const folderParsed = parseFolderName(parentFolder);
             parsed.seriesTitle = folderParsed.seriesTitle || parsed.seriesTitle;

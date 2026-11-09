@@ -18,7 +18,7 @@ export const DEFAULT_NAMING_CONFIG: Omit<NamingConfig, 'id'> = {
   renameFiles: true,
   replaceIllegalChars: true,
   colonReplacementFormat: 'smart',
-  standardFileFormat: '{Series Title} - {Volume Number} - {Chapter Number}',
+  standardFileFormat: '{Series Title} - Vol.{Volume Number} - Ch.{Chapter Number}',
   seriesFolderFormat: '{Series Title}',
   creatorFolderFormat: '{Creator Name}',
   volumeFolderFormat: 'Volume {Volume Number}',
@@ -131,8 +131,8 @@ export function replaceTokens(format: string, tokens: NamingTokens, config: Nami
     result = result.replace(/\{Volume Number:00\}/gi, padNumber(tokens.volumeNumber, 2));
     result = result.replace(/\{Volume Number:000\}/gi, padNumber(tokens.volumeNumber, 3));
   } else {
-    // Remove volume-related parts if no volume number
-    result = result.replace(/\s*-?\s*\{Volume Number(:0+)?\}/gi, '');
+    // Remove volume-related parts (and their "Vol." label) if no volume number
+    result = result.replace(/\s*-?\s*(?:Vol(?:ume)?\.?\s*)?\{Volume Number(:0+)?\}/gi, '');
   }
   
   if (tokens.chapterNumber !== undefined) {
@@ -141,8 +141,8 @@ export function replaceTokens(format: string, tokens: NamingTokens, config: Nami
     result = result.replace(/\{Chapter Number:00\}/gi, padNumber(tokens.chapterNumber, 2));
     result = result.replace(/\{Chapter Number:000\}/gi, padNumber(tokens.chapterNumber, 3));
   } else {
-    // Remove chapter-related parts if no chapter number
-    result = result.replace(/\s*-?\s*\{Chapter Number(:0+)?\}/gi, '');
+    // Remove chapter-related parts (and their "Ch."/"#" label) if no chapter number
+    result = result.replace(/\s*-?\s*(?:Ch(?:apter)?\.?\s*|#)?\{Chapter Number(:0+)?\}/gi, '');
   }
   
   if (tokens.chapterTitle !== undefined) {

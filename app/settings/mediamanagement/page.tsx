@@ -27,7 +27,7 @@ const defaultNamingConfig: NamingConfig = {
   renameFiles: true,
   replaceIllegalChars: true,
   colonReplacementFormat: 'smart',
-  standardFileFormat: '{Series Title} - {Volume Number} - {Chapter Number}',
+  standardFileFormat: '{Series Title} - Vol.{Volume Number} - Ch.{Chapter Number}',
   seriesFolderFormat: '{Series Title}',
   volumeFolderFormat: 'Volume {Volume Number}',
   creatorFolderFormat: '{Creator Name}',
